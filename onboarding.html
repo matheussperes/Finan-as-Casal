@@ -720,7 +720,7 @@
     ───────────────────────────────────────────── */
     const SUPABASE_URL  = 'https://vvgrnrvvdggosxkjkxaa.supabase.co';
     const SUPABASE_ANON = 'sb_publishable_XbWPcxUBV-2R2eH720h7kA_v5zCrvoX';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
     /* ─────────────────────────────────────────────
        Estado do onboarding
@@ -735,7 +735,7 @@
        Guard: só acessa com sessão ativa
     ───────────────────────────────────────────── */
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await _supabase.auth.getSession();
       if (!session) { window.location.href = 'index.html'; return; }
       currentUser = session.user;
 
@@ -1010,7 +1010,7 @@
         if (accErr) throw accErr;
 
         /* 5. Criar parâmetros de independência (defaults) */
-        await supabase.from('independence_params').insert({
+        await _supabase.from('independence_params').insert({
           household_id:              household.id,
           real_rate_accumulation:    0.04,
           real_rate_post:            0.035,
