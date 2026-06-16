@@ -423,7 +423,7 @@
     ───────────────────────────────────────────── */
     const SUPABASE_URL  = 'https://vvgrnrvvdggosxkjkxaa.supabase.co';
     const SUPABASE_ANON = 'sb_publishable_XbWPcxUBV-2R2eH720h7kA_v5zCrvoX';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
     /* ─────────────────────────────────────────────
        Estado
@@ -434,7 +434,7 @@
        Redireciona se já logado
     ───────────────────────────────────────────── */
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await _supabase.auth.getSession();
       if (session) await redirectAfterLogin(session.user);
     })();
 
@@ -469,7 +469,7 @@
       setLoading('btn-login', true);
       hideError();
 
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
         setLoading('btn-login', false);
@@ -500,7 +500,7 @@
       setLoading('btn-signup', true);
       hideError();
 
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await _supabase.auth.signUp({
         email,
         password,
         options: {
@@ -532,7 +532,7 @@
       const email = document.getElementById('login-email').value.trim();
       if (!email) { showError('Digite seu e-mail acima primeiro.'); return; }
 
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      const { error } = await _supabase.auth.resetPasswordForEmail(email);
       if (error) { showError(error.message); return; }
       toast('Link de redefinição enviado para ' + email, 'success');
     });
