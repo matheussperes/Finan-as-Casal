@@ -1,0 +1,1489 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Finanças do Casal — Projetos</title>
+  <link rel="stylesheet" href="globals.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+
+    /* ─── Sidebar overlay mobile ─── */
+    .sidebar-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:99; }
+    .sidebar-overlay.open { display:block; }
+
+    /* ─── Mobile menu btn ─── */
+    .mobile-menu-btn {
+      display:none; align-items:center; justify-content:center;
+      width:36px; height:36px; border-radius:var(--radius-md);
+      color:var(--text-secondary); transition:background var(--transition);
+    }
+    .mobile-menu-btn:hover { background:var(--surface-alt); }
+
+    /* ─── Btn spinner ─── */
+    .btn-loading { position:relative; color:transparent !important; }
+    .btn-loading::after {
+      content:''; position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      width:16px; height:16px;
+      border:2px solid rgba(255,255,255,.3);
+      border-top-color:white; border-radius:50%;
+      animation:spin .7s linear infinite;
+    }
+
+    /* ─── Page header ─── */
+    .page-header {
+      display:flex; align-items:flex-start;
+      justify-content:space-between; gap:16px; margin-bottom:28px;
+    }
+    .page-title-block h1 {
+      font-size:1.5rem; font-weight:800;
+      color:var(--text-primary); line-height:1.2;
+    }
+    .page-title-block p { font-size:.875rem; color:var(--text-muted); margin-top:4px; }
+
+    /* ─── KPIs ─── */
+    .kpi-grid-4 {
+      display:grid; grid-template-columns:repeat(4,1fr);
+      gap:16px; margin-bottom:28px;
+    }
+    .kpi-card-v2 {
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--radius-lg); padding:20px 20px 18px;
+      position:relative; overflow:hidden;
+    }
+    .kpi-card-v2::before {
+      content:''; position:absolute; top:0; left:0; right:0;
+      height:3px; border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+    }
+    .kpi-card-v2.k-blue::before   { background:#3b82f6; }
+    .kpi-card-v2.k-green::before  { background:var(--color-income); }
+    .kpi-card-v2.k-amber::before  { background:var(--color-warning); }
+    .kpi-card-v2.k-violet::before { background:#8b5cf6; }
+    .kpi-icon-wrap {
+      width:36px; height:36px; border-radius:var(--radius-md);
+      display:flex; align-items:center; justify-content:center; margin-bottom:14px;
+    }
+    .kpi-card-v2.k-blue   .kpi-icon-wrap { background:#eff6ff; color:#1d4ed8; }
+    .kpi-card-v2.k-green  .kpi-icon-wrap { background:var(--emerald-100); color:var(--emerald-700); }
+    .kpi-card-v2.k-amber  .kpi-icon-wrap { background:#fefce8; color:#92400e; }
+    .kpi-card-v2.k-violet .kpi-icon-wrap { background:#f5f3ff; color:#6d28d9; }
+    .kpi-label-v2 {
+      font-size:.75rem; font-weight:600; color:var(--text-muted);
+      text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;
+    }
+    .kpi-value-v2 {
+      font-family:var(--font-display); font-size:1.5rem;
+      font-weight:800; color:var(--text-primary); line-height:1;
+    }
+    .kpi-sub { font-size:.75rem; color:var(--text-muted); margin-top:6px; }
+
+    /* ─── Seção de prioridade ─── */
+    .priority-section { margin-bottom:36px; }
+    .priority-header {
+      display:flex; align-items:center; gap:10px;
+      margin-bottom:16px;
+    }
+    .priority-badge {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:5px 12px 5px 8px; border-radius:var(--radius-full);
+      font-size:.8125rem; font-weight:700; letter-spacing:.02em;
+    }
+    .priority-badge.essencial { background:#fff7ed; color:#9a3412; }
+    .priority-badge.desejo    { background:#eff6ff; color:#1e40af; }
+    .priority-badge.sonho     { background:#f5f3ff; color:#5b21b6; }
+    .priority-count {
+      font-size:.8125rem; color:var(--text-muted); font-weight:500;
+    }
+    .priority-pmt-total {
+      margin-left:auto;
+      font-size:.8125rem; font-weight:600; color:var(--text-secondary);
+    }
+    .priority-pmt-total span { color:var(--text-primary); }
+
+    /* ─── Grid de cards de projeto ─── */
+    .projects-grid {
+      display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr));
+      gap:16px;
+    }
+
+    /* ─── Card de projeto ─── */
+    .project-card {
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--radius-lg); padding:20px;
+      display:flex; flex-direction:column; gap:14px;
+      transition:box-shadow .2s, border-color .2s;
+      position:relative; overflow:hidden;
+    }
+    .project-card:hover { box-shadow:var(--shadow-md); border-color:var(--slate-300); }
+    .project-card.inactive { opacity:.55; }
+    .project-card.inactive:hover { opacity:.7; }
+
+    /* Stripe de prioridade */
+    .project-card::before {
+      content:''; position:absolute;
+      left:0; top:0; bottom:0; width:4px;
+    }
+    .project-card.essencial::before { background:#f97316; }
+    .project-card.desejo::before    { background:#3b82f6; }
+    .project-card.sonho::before     { background:#8b5cf6; }
+
+    /* Topo do card */
+    .project-card-top {
+      display:flex; align-items:flex-start;
+      justify-content:space-between; gap:10px;
+    }
+    .project-icon-name { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
+    .project-type-icon {
+      width:42px; height:42px; border-radius:var(--radius-md);
+      display:flex; align-items:center; justify-content:center;
+      font-size:1.25rem; flex-shrink:0;
+    }
+    .project-name {
+      font-family:var(--font-display); font-weight:700;
+      font-size:.9375rem; color:var(--text-primary);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .project-type-label { font-size:.75rem; color:var(--text-muted); margin-top:1px; }
+
+    /* Ações do card */
+    .project-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+    .project-action-btn {
+      width:30px; height:30px; border-radius:var(--radius-sm);
+      display:flex; align-items:center; justify-content:center;
+      color:var(--text-muted); transition:all .15s;
+    }
+    .project-action-btn:hover { background:var(--surface-alt); color:var(--text-primary); }
+    .project-action-btn.danger:hover { background:#fff1f2; color:var(--danger); }
+
+    /* Toggle */
+    .toggle-switch {
+      position:relative; width:36px; height:20px; flex-shrink:0;
+    }
+    .toggle-switch input { opacity:0; width:0; height:0; }
+    .toggle-slider {
+      position:absolute; inset:0; cursor:pointer;
+      background:var(--slate-300); border-radius:var(--radius-full);
+      transition:background .2s;
+    }
+    .toggle-slider::before {
+      content:''; position:absolute;
+      width:14px; height:14px; background:white;
+      border-radius:50%; top:3px; left:3px;
+      transition:transform .2s;
+      box-shadow:0 1px 3px rgba(0,0,0,.2);
+    }
+    .toggle-switch input:checked + .toggle-slider { background:var(--primary); }
+    .toggle-switch input:checked + .toggle-slider::before { transform:translateX(16px); }
+
+    /* Valores do card */
+    .project-values {
+      display:grid; grid-template-columns:1fr 1fr; gap:8px;
+    }
+    .project-value-item {}
+    .project-value-label { font-size:.6875rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
+    .project-value-num {
+      font-family:var(--font-display); font-size:.9375rem;
+      font-weight:700; color:var(--text-primary); margin-top:2px;
+    }
+    .project-value-num.pmt { color:var(--emerald-600); font-size:1.0625rem; }
+    .project-value-num.warn-pmt { color:var(--color-warning); font-size:1.0625rem; }
+
+    /* Progresso */
+    .project-progress-wrap {}
+    .project-progress-info {
+      display:flex; justify-content:space-between;
+      font-size:.75rem; margin-bottom:6px;
+    }
+    .project-progress-info .progress-label { color:var(--text-muted); font-weight:500; }
+    .project-progress-info .progress-pct   { font-weight:700; color:var(--text-secondary); }
+    .progress-bar-track {
+      height:7px; background:var(--slate-100);
+      border-radius:var(--radius-full); overflow:hidden;
+    }
+    .progress-bar-fill {
+      height:100%; border-radius:var(--radius-full);
+      background:var(--primary); transition:width .4s ease;
+    }
+    .progress-bar-fill.done   { background:var(--emerald-400); }
+    .progress-bar-fill.warn   { background:var(--color-warning); }
+
+    /* Data alvo */
+    .project-deadline {
+      display:flex; align-items:center; gap:5px;
+      font-size:.75rem; color:var(--text-muted);
+    }
+    .project-deadline.overdue { color:var(--color-expense); font-weight:600; }
+    .project-deadline.soon    { color:var(--color-warning); font-weight:600; }
+
+    /* ─── Card "Adicionar projeto" ─── */
+    .project-add-card {
+      border:2px dashed var(--border); border-radius:var(--radius-lg);
+      padding:20px; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:8px;
+      cursor:pointer; transition:all .2s;
+      min-height:180px; color:var(--text-muted);
+    }
+    .project-add-card:hover {
+      border-color:var(--primary); color:var(--primary);
+      background:var(--primary-light);
+    }
+    .project-add-card span { font-size:.875rem; font-weight:600; }
+
+    /* ─── Estado vazio por seção ─── */
+    .section-empty {
+      grid-column:1/-1; text-align:center; padding:32px 16px;
+      color:var(--text-muted); font-size:.875rem;
+    }
+
+    /* ─── Toast ─── */
+    #toast-container {
+      position:fixed; bottom:24px; right:24px;
+      z-index:9999; display:flex; flex-direction:column; gap:8px;
+    }
+    .toast {
+      display:flex; align-items:center; gap:10px;
+      padding:12px 16px; border-radius:var(--radius-md);
+      font-size:.875rem; font-weight:500;
+      box-shadow:var(--shadow-md); min-width:260px; max-width:360px;
+      animation:toastIn .25s ease;
+    }
+    .toast.success { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
+    .toast.error   { background:#fff1f2; color:#9f1239; border:1px solid #fecdd3; }
+    .toast.info    { background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; }
+    @keyframes toastIn {
+      from { opacity:0; transform:translateY(8px) scale(.97); }
+      to   { opacity:1; transform:translateY(0) scale(1); }
+    }
+
+    /* ─── Modal ─── */
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:200; align-items:center; justify-content:center; padding:16px; }
+    .modal-overlay.open { display:flex; }
+    .modal { background:var(--surface); border-radius:var(--radius-xl); width:100%; max-width:560px; max-height:90vh; overflow-y:auto; box-shadow:var(--shadow-lg); }
+    .modal-header { display:flex; align-items:center; justify-content:space-between; padding:24px 24px 0; }
+    .modal-title { font-family:var(--font-display); font-size:1.125rem; font-weight:800; color:var(--text-primary); }
+    .modal-close { width:32px; height:32px; border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; color:var(--text-muted); transition:all .15s; }
+    .modal-close:hover { background:var(--surface-alt); color:var(--text-primary); }
+    .modal-body { padding:20px 24px 24px; display:flex; flex-direction:column; gap:16px; }
+    .modal-footer { padding:0 24px 24px; display:flex; gap:10px; justify-content:flex-end; }
+    .form-group { display:flex; flex-direction:column; gap:6px; }
+    .form-label { font-size:.8125rem; font-weight:600; color:var(--text-secondary); }
+    .form-hint  { font-size:.75rem; color:var(--text-muted); }
+    .form-row   { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+    /* Seletor de tipo (grid de ícones) */
+    .type-grid {
+      display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
+    }
+    .type-option {
+      display:flex; flex-direction:column; align-items:center;
+      gap:4px; padding:10px 6px; border-radius:var(--radius-md);
+      border:2px solid var(--border); cursor:pointer;
+      transition:all .15s; text-align:center;
+    }
+    .type-option:hover { border-color:var(--primary); background:var(--primary-light); }
+    .type-option.selected { border-color:var(--primary); background:var(--primary-light); }
+    .type-option .type-emoji { font-size:1.5rem; line-height:1; }
+    .type-option .type-name  { font-size:.6875rem; font-weight:600; color:var(--text-secondary); line-height:1.2; }
+
+    /* PMT preview */
+    .pmt-preview {
+      background:var(--emerald-50); border:1px solid var(--emerald-200);
+      border-radius:var(--radius-md); padding:14px 16px;
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+    }
+    .pmt-preview .pmt-label { font-size:.8125rem; font-weight:600; color:var(--emerald-700); }
+    .pmt-preview .pmt-amount {
+      font-family:var(--font-display); font-size:1.375rem;
+      font-weight:800; color:var(--emerald-700);
+    }
+    .pmt-preview.warn-preview {
+      background:#fefce8; border-color:#fde68a;
+    }
+    .pmt-preview.warn-preview .pmt-label,
+    .pmt-preview.warn-preview .pmt-amount { color:#92400e; }
+
+    /* ─── Resumo total (rodapé sticky) ─── */
+    .summary-bar {
+      position:sticky; bottom:0; left:0; right:0; z-index:10;
+      background:var(--slate-900);
+      margin:32px -32px -32px;
+      padding:16px 32px;
+      display:flex; align-items:center; gap:24px; flex-wrap:wrap;
+    }
+    .summary-bar-title {
+      font-family:var(--font-display); font-weight:700;
+      color:white; font-size:.9375rem; flex:1;
+    }
+    .summary-bar-item { text-align:center; }
+    .summary-bar-label { font-size:.6875rem; font-weight:600; color:var(--slate-400); text-transform:uppercase; letter-spacing:.05em; }
+    .summary-bar-value { font-family:var(--font-display); font-size:1.0625rem; font-weight:800; color:white; margin-top:2px; }
+    .summary-bar-value.highlight { color:var(--emerald-400); }
+
+    /* ─── Confirm delete modal ─── */
+    .confirm-modal { max-width:380px; }
+    .confirm-body { padding:16px 24px 0; }
+    .confirm-body p { font-size:.9375rem; color:var(--text-secondary); line-height:1.5; }
+    .confirm-footer { padding:20px 24px; display:flex; gap:10px; justify-content:flex-end; }
+
+    /* ─── Responsividade ─── */
+    @media (max-width:1200px) { .kpi-grid-4 { grid-template-columns:repeat(2,1fr); } }
+    @media (max-width:1024px) { .projects-grid { grid-template-columns:repeat(2,1fr); } }
+    @media (max-width:768px) {
+      .mobile-menu-btn { display:flex; }
+      .page-header { flex-direction:column; gap:12px; }
+      .kpi-grid-4 { grid-template-columns:repeat(2,1fr); gap:10px; }
+      .kpi-value-v2 { font-size:1.25rem; }
+      .projects-grid { grid-template-columns:1fr; }
+      .form-row { grid-template-columns:1fr; }
+      .type-grid { grid-template-columns:repeat(4,1fr); }
+      .summary-bar { margin:32px -16px -24px; padding:16px; }
+    }
+    @media (max-width:480px) {
+      .kpi-grid-4 { grid-template-columns:1fr 1fr; }
+      .type-grid { grid-template-columns:repeat(3,1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-layout">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-dot">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+               fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        Finanças do Casal
+      </div>
+    </div>
+
+    <div class="sidebar-couple">
+      <div class="couple-label">Casal</div>
+      <div class="couple-names" id="sidebar-couple-name">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+        </svg>
+        <span id="couple-name-text">Carregando…</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Controle</div>
+      <a href="lancamentos.html" class="nav-item">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+        </span>
+        Lançamentos
+      </a>
+      <a href="plano.html" class="nav-item">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6"  y1="20" x2="6"  y2="14"/>
+          </svg>
+        </span>
+        Plano / Orçamento
+      </a>
+
+      <div class="nav-section-label">Futuro</div>
+      <a href="projetos.html" class="nav-item active">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </span>
+        Projetos
+      </a>
+      <a href="futuro.html" class="nav-item">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+        </span>
+        Independência Financeira
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <a href="config.html" class="nav-item" style="margin-bottom:4px">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </span>
+        Configurações
+      </a>
+      <button class="nav-item" id="btn-logout" style="width:100%;border:none;cursor:pointer;text-align:left">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </span>
+        Sair
+      </button>
+    </div>
+  </aside>
+
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <!-- ═══ CONTEÚDO PRINCIPAL ═══ -->
+  <main class="main-content">
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="mobile-menu-btn" id="mobile-menu-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6"  x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <span class="topbar-title">Projetos do Casal</span>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary" id="btn-new-topbar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Novo projeto
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ CONTEÚDO DA PÁGINA ═══ -->
+    <div class="page-content">
+
+      <!-- Cabeçalho -->
+      <div class="page-header">
+        <div class="page-title-block">
+          <h1>Projetos do Casal</h1>
+          <p>Sonhos organizados com aporte mensal calculado. Quanto guardar pra chegar lá.</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-primary" id="btn-new-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Novo projeto
+          </button>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-grid-4" id="kpi-grid">
+        <div class="kpi-card-v2 k-blue">
+          <div class="kpi-icon-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+          </div>
+          <div class="kpi-label-v2">Projetos ativos</div>
+          <div class="kpi-value-v2" id="kpi-active">—</div>
+          <div class="kpi-sub" id="kpi-active-sub">—</div>
+        </div>
+        <div class="kpi-card-v2 k-green">
+          <div class="kpi-icon-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="1" x2="12" y2="23"/>
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </div>
+          <div class="kpi-label-v2">Aporte mensal total</div>
+          <div class="kpi-value-v2" id="kpi-pmt">—</div>
+          <div class="kpi-sub" id="kpi-pmt-sub">—</div>
+        </div>
+        <div class="kpi-card-v2 k-amber">
+          <div class="kpi-icon-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <div class="kpi-label-v2">Já acumulado</div>
+          <div class="kpi-value-v2" id="kpi-allocated">—</div>
+          <div class="kpi-sub" id="kpi-allocated-sub">—</div>
+        </div>
+        <div class="kpi-card-v2 k-violet">
+          <div class="kpi-icon-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div class="kpi-label-v2">Total a alcançar</div>
+          <div class="kpi-value-v2" id="kpi-target">—</div>
+          <div class="kpi-sub" id="kpi-target-sub">—</div>
+        </div>
+      </div>
+
+      <!-- Projetos por prioridade -->
+      <div id="projects-container">
+        <!-- Renderizado pelo JS -->
+        <div style="text-align:center;padding:60px 16px;color:var(--text-muted)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+               style="margin:0 auto 12px;display:block;opacity:.4">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+          <p>Carregando projetos…</p>
+        </div>
+      </div>
+
+      <!-- Summary bar -->
+      <div class="summary-bar" id="summary-bar" style="display:none">
+        <div class="summary-bar-title">💚 Resumo dos projetos</div>
+        <div class="summary-bar-item">
+          <div class="summary-bar-label">Essencial</div>
+          <div class="summary-bar-value highlight" id="sum-essencial">—</div>
+        </div>
+        <div class="summary-bar-item">
+          <div class="summary-bar-label">Desejo</div>
+          <div class="summary-bar-value highlight" id="sum-desejo">—</div>
+        </div>
+        <div class="summary-bar-item">
+          <div class="summary-bar-label">Sonho</div>
+          <div class="summary-bar-value highlight" id="sum-sonho">—</div>
+        </div>
+        <div class="summary-bar-item" style="border-left:1px solid var(--slate-700);padding-left:24px">
+          <div class="summary-bar-label">Total / mês</div>
+          <div class="summary-bar-value" id="sum-total">—</div>
+        </div>
+      </div>
+
+    </div><!-- /page-content -->
+  </main>
+</div><!-- /app-layout -->
+
+<!-- ═══ TOAST ═══ -->
+<div id="toast-container"></div>
+
+<!-- ═══ MODAL PROJETO ═══ -->
+<div class="modal-overlay" id="modal-project">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-project-title">Novo projeto</span>
+      <button class="modal-close" id="modal-project-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- Tipo -->
+      <div class="form-group">
+        <label class="form-label">Tipo de projeto</label>
+        <div class="type-grid" id="type-grid">
+          <!-- renderizado pelo JS -->
+        </div>
+      </div>
+
+      <!-- Prioridade -->
+      <div class="form-group">
+        <label class="form-label">Prioridade</label>
+        <select class="select" id="field-priority">
+          <option value="Essencial">⚡ Essencial — preciso disso</option>
+          <option value="Desejo">💙 Desejo — quero muito</option>
+          <option value="Sonho">✨ Sonho — sonho grande</option>
+        </select>
+      </div>
+
+      <!-- Nome -->
+      <div class="form-group">
+        <label class="form-label">Nome do projeto</label>
+        <input class="input" type="text" id="field-name" placeholder="Ex: Lua de mel em Portugal" maxlength="80" />
+      </div>
+
+      <!-- Valor alvo + Alocado -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Valor alvo (R$)</label>
+          <input class="input" type="number" id="field-target" placeholder="25000" min="0" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Já alocado (R$)</label>
+          <input class="input" type="number" id="field-allocated" placeholder="0" min="0" step="0.01" />
+          <span class="form-hint">Quanto já têm guardado para este objetivo</span>
+        </div>
+      </div>
+
+      <!-- Data alvo + Taxa -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Data alvo</label>
+          <input class="input" type="month" id="field-date" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Rentabilidade mensal (%)</label>
+          <input class="input" type="number" id="field-rate" placeholder="0.5" min="0" max="5" step="0.01" />
+          <span class="form-hint">0 = sem rendimento; 0,5% = Tesouro Selic (est.)</span>
+        </div>
+      </div>
+
+      <!-- PMT preview -->
+      <div class="pmt-preview" id="pmt-preview">
+        <div class="pmt-label" id="pmt-preview-label">Aporte mensal estimado</div>
+        <div class="pmt-amount" id="pmt-preview-value">—</div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modal-project-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="modal-project-save">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Salvar projeto
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL CONFIRMAR EXCLUSÃO ═══ -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal confirm-modal">
+    <div class="modal-header">
+      <span class="modal-title">Excluir projeto</span>
+      <button class="modal-close" id="modal-confirm-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="confirm-body">
+      <p>Tem certeza que deseja excluir o projeto <strong id="confirm-project-name">"—"</strong>? Esta ação não pode ser desfeita.</p>
+    </div>
+    <div class="confirm-footer">
+      <button class="btn btn-secondary" id="modal-confirm-cancel">Cancelar</button>
+      <button class="btn btn-danger" id="modal-confirm-ok">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SCRIPT ═══ -->
+<script>
+'use strict';
+
+/* ──────────────────────────────────────────────
+   SUPABASE INIT
+   Substitua pelas suas credenciais reais
+─────────────────────────────────────────────── */
+const SUPABASE_URL  = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON = 'YOUR_SUPABASE_ANON_KEY';
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+/* ──────────────────────────────────────────────
+   CONSTANTES
+─────────────────────────────────────────────── */
+const PROJECT_TYPES = [
+  { id: 'viagem',       label: 'Viagem',       emoji: '✈️',  bg: '#eff6ff', color: '#1e40af' },
+  { id: 'casa',         label: 'Casa/Apê',     emoji: '🏠',  bg: '#fff7ed', color: '#9a3412' },
+  { id: 'carro',        label: 'Carro',        emoji: '🚗',  bg: '#f0fdf4', color: '#14532d' },
+  { id: 'casamento',    label: 'Casamento',    emoji: '💍',  bg: '#fdf4ff', color: '#7e22ce' },
+  { id: 'educacao',     label: 'Educação',     emoji: '🎓',  bg: '#ecfdf5', color: '#065f46' },
+  { id: 'saude',        label: 'Saúde',        emoji: '❤️',  bg: '#fff1f2', color: '#9f1239' },
+  { id: 'filhos',       label: 'Filhos',       emoji: '👶',  bg: '#fefce8', color: '#713f12' },
+  { id: 'negocio',      label: 'Negócio',      emoji: '💼',  bg: '#f0f9ff', color: '#0c4a6e' },
+  { id: 'eletronicos',  label: 'Eletrônicos',  emoji: '📱',  bg: '#f8fafc', color: '#334155' },
+  { id: 'reforma',      label: 'Reforma',      emoji: '🔨',  bg: '#fff7ed', color: '#7c2d12' },
+  { id: 'investimento', label: 'Investimento', emoji: '📈',  bg: '#ecfdf5', color: '#064e3b' },
+  { id: 'outro',        label: 'Outro',        emoji: '⭐',  bg: '#fefce8', color: '#92400e' },
+];
+
+const PRIORITY_CONFIG = {
+  'Essencial': { label: 'Essencial', emoji: '⚡', cls: 'essencial', color: '#f97316' },
+  'Desejo':    { label: 'Desejo',    emoji: '💙', cls: 'desejo',    color: '#3b82f6' },
+  'Sonho':     { label: 'Sonho',     emoji: '✨', cls: 'sonho',     color: '#8b5cf6' },
+};
+
+const PRIORITY_ORDER = ['Essencial', 'Desejo', 'Sonho'];
+
+/* ──────────────────────────────────────────────
+   ESTADO
+─────────────────────────────────────────────── */
+let householdId   = null;
+let projects      = [];         // todos os projetos do casal
+let editingId     = null;       // id do projeto em edição (null = novo)
+let deleteId      = null;       // id a excluir
+let selectedType  = 'viagem';   // tipo selecionado no modal
+
+/* ──────────────────────────────────────────────
+   FORMATAÇÃO
+─────────────────────────────────────────────── */
+function fmtBRL(v) {
+  return new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(v || 0);
+}
+
+function fmtShortBRL(v) {
+  const abs = Math.abs(v || 0);
+  if (abs >= 1_000_000) return fmtBRL(v / 1_000_000).replace(',00','') + 'M';
+  if (abs >= 1_000)     return fmtBRL(v / 1_000).replace(',00','') + 'k';
+  return fmtBRL(v);
+}
+
+function fmtMonth(isoDate) {
+  if (!isoDate) return '—';
+  // isoDate pode ser 'YYYY-MM' ou 'YYYY-MM-DD'
+  const [y, m] = isoDate.split('-');
+  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return `${months[parseInt(m,10)-1]}/${y}`;
+}
+
+/* ──────────────────────────────────────────────
+   CÁLCULO PMT
+   PMT = FV * r / ((1+r)^n - 1)
+   Se r=0: PMT = FV / n
+─────────────────────────────────────────────── */
+function calcPMT(targetAmount, allocatedAmount, targetDateStr, monthlyRatePct) {
+  const fv = Math.max(0, (targetAmount || 0) - (allocatedAmount || 0));
+  if (fv <= 0) return { pmt: 0, months: 0, ok: true, done: true };
+
+  if (!targetDateStr) return { pmt: null, months: 0, ok: false, done: false };
+
+  // Calcular número de meses até a data alvo
+  const now   = new Date();
+  const nowY  = now.getFullYear();
+  const nowM  = now.getMonth(); // 0-indexed
+
+  let [tY, tM] = targetDateStr.split('-').map(Number);
+  // Se vier como YYYY-MM-DD, ignorar o dia
+  const n = (tY - nowY) * 12 + (tM - 1 - nowM);
+
+  if (n <= 0) return { pmt: null, months: n, ok: false, done: false };
+
+  const r = (monthlyRatePct || 0) / 100;
+  let pmt;
+  if (r === 0) {
+    pmt = fv / n;
+  } else {
+    pmt = fv * r / (Math.pow(1 + r, n) - 1);
+  }
+
+  return { pmt, months: n, ok: true, done: false };
+}
+
+/* ──────────────────────────────────────────────
+   MESES ATÉ DATA
+─────────────────────────────────────────────── */
+function monthsUntil(targetDateStr) {
+  if (!targetDateStr) return null;
+  const now   = new Date();
+  const [tY, tM] = targetDateStr.split('-').map(Number);
+  return (tY - now.getFullYear()) * 12 + (tM - 1 - now.getMonth());
+}
+
+/* ──────────────────────────────────────────────
+   TIPO META
+─────────────────────────────────────────────── */
+function getTypeMeta(typeId) {
+  return PROJECT_TYPES.find(t => t.id === typeId) || PROJECT_TYPES.find(t => t.id === 'outro');
+}
+
+/* ──────────────────────────────────────────────
+   TOAST
+─────────────────────────────────────────────── */
+function showToast(msg, type='success') {
+  const icons = {
+    success: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+    error:   `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+    info:    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  };
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span class="toast-icon">${icons[type]}</span><span>${msg}</span>`;
+  document.getElementById('toast-container').appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+/* ──────────────────────────────────────────────
+   INICIALIZAÇÃO
+─────────────────────────────────────────────── */
+async function init() {
+  const { data: { session } } = await _supabase.auth.getSession();
+  if (!session) { window.location.href = 'index.html'; return; }
+
+  // Busca member sem join (regra crítica do projeto)
+  const { data: member } = await _supabase
+    .from('members')
+    .select('household_id')
+    .eq('user_id', session.user.id)
+    .maybeSingle();
+
+  if (!member?.household_id) { window.location.href = 'onboarding.html'; return; }
+  householdId = member.household_id;
+
+  // Busca nome do casal — query separada
+  const { data: hh } = await _supabase
+    .from('households')
+    .select('name')
+    .eq('id', householdId)
+    .maybeSingle();
+
+  document.getElementById('couple-name-text').textContent = hh?.name || 'Nosso Casal';
+
+  renderTypeGrid();
+  bindEvents();
+  await loadProjects();
+}
+
+/* ──────────────────────────────────────────────
+   CARREGAR PROJETOS
+─────────────────────────────────────────────── */
+async function loadProjects() {
+  const { data, error } = await _supabase
+    .from('projects')
+    .select('*')
+    .eq('household_id', householdId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    showToast('Erro ao carregar projetos: ' + error.message, 'error');
+    return;
+  }
+
+  projects = data || [];
+  renderAll();
+}
+
+/* ──────────────────────────────────────────────
+   RENDERIZAR TUDO
+─────────────────────────────────────────────── */
+function renderAll() {
+  renderKPIs();
+  renderProjectsSections();
+  renderSummaryBar();
+}
+
+/* ──────────────────────────────────────────────
+   KPIs
+─────────────────────────────────────────────── */
+function renderKPIs() {
+  const active    = projects.filter(p => p.is_active !== false);
+  const inactive  = projects.filter(p => p.is_active === false);
+  const totalPMT  = active.reduce((sum, p) => {
+    const r = calcPMT(p.target_amount, p.allocated_amount, p.target_date, p.monthly_rate);
+    return sum + (r.ok && !r.done ? (r.pmt || 0) : 0);
+  }, 0);
+  const totalAlloc  = projects.reduce((s, p) => s + (Number(p.allocated_amount) || 0), 0);
+  const totalTarget = projects.reduce((s, p) => s + (Number(p.target_amount) || 0), 0);
+
+  document.getElementById('kpi-active').textContent    = active.length;
+  document.getElementById('kpi-active-sub').textContent = `${inactive.length} pausado${inactive.length !== 1 ? 's' : ''}`;
+  document.getElementById('kpi-pmt').textContent       = fmtBRL(totalPMT);
+  document.getElementById('kpi-pmt-sub').textContent   = `${active.length} projeto${active.length !== 1 ? 's' : ''} ativos`;
+  document.getElementById('kpi-allocated').textContent = fmtBRL(totalAlloc);
+  document.getElementById('kpi-allocated-sub').textContent = totalTarget > 0
+    ? `${Math.round((totalAlloc / totalTarget) * 100)}% do total`
+    : '—';
+  document.getElementById('kpi-target').textContent    = fmtBRL(totalTarget);
+  document.getElementById('kpi-target-sub').textContent = `${projects.length} projeto${projects.length !== 1 ? 's' : ''} no total`;
+}
+
+/* ──────────────────────────────────────────────
+   SEÇÕES POR PRIORIDADE
+─────────────────────────────────────────────── */
+function renderProjectsSections() {
+  const container = document.getElementById('projects-container');
+  container.innerHTML = '';
+
+  if (projects.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:80px 16px 40px;color:var(--text-muted)">
+        <div style="font-size:3rem;margin-bottom:12px">✨</div>
+        <p style="font-size:1.0625rem;font-weight:700;color:var(--text-secondary);margin-bottom:6px">Nenhum projeto ainda</p>
+        <p style="font-size:.875rem;margin-bottom:20px">Adicione o primeiro sonho do casal e descubra quanto guardar por mês.</p>
+        <button class="btn btn-primary" onclick="openModal()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Adicionar primeiro projeto
+        </button>
+      </div>`;
+    return;
+  }
+
+  PRIORITY_ORDER.forEach(priority => {
+    const group = projects.filter(p => p.priority === priority);
+    // Mostrar seção mesmo se vazia (para permitir adicionar naquela prioridade)
+    const pCfg = PRIORITY_CONFIG[priority];
+
+    const activePMT = group.filter(p => p.is_active !== false).reduce((sum, p) => {
+      const r = calcPMT(p.target_amount, p.allocated_amount, p.target_date, p.monthly_rate);
+      return sum + (r.ok && !r.done ? (r.pmt || 0) : 0);
+    }, 0);
+
+    const section = document.createElement('div');
+    section.className = 'priority-section';
+    section.innerHTML = `
+      <div class="priority-header">
+        <div class="priority-badge ${pCfg.cls}">
+          <span>${pCfg.emoji}</span>
+          <span>${pCfg.label}</span>
+        </div>
+        <span class="priority-count">${group.length} projeto${group.length !== 1 ? 's' : ''}</span>
+        ${activePMT > 0 ? `<span class="priority-pmt-total">Aporte: <span>${fmtBRL(activePMT)}/mês</span></span>` : ''}
+      </div>
+      <div class="projects-grid" id="grid-${priority.toLowerCase()}">
+        ${group.map(p => renderProjectCard(p)).join('')}
+        ${renderAddCard(priority)}
+      </div>`;
+
+    container.appendChild(section);
+  });
+
+  // Bind events dos cards
+  bindCardEvents();
+}
+
+/* ──────────────────────────────────────────────
+   CARD DE PROJETO
+─────────────────────────────────────────────── */
+function renderProjectCard(p) {
+  const type     = getTypeMeta(p.project_type || 'outro');
+  const pCfg     = PRIORITY_CONFIG[p.priority] || PRIORITY_CONFIG['Sonho'];
+  const active   = p.is_active !== false;
+  const target   = Number(p.target_amount) || 0;
+  const alloc    = Number(p.allocated_amount) || 0;
+  const pct      = target > 0 ? Math.min((alloc / target) * 100, 100) : 0;
+  const done     = pct >= 100;
+
+  const pmtResult = calcPMT(target, alloc, p.target_date, Number(p.monthly_rate) || 0);
+  const mos       = monthsUntil(p.target_date);
+
+  let pmtDisplay, pmtClass;
+  if (done) {
+    pmtDisplay = '✅ Concluído!';
+    pmtClass   = 'pmt';
+  } else if (!pmtResult.ok) {
+    if (mos !== null && mos <= 0) {
+      pmtDisplay = '⚠️ Data passou';
+      pmtClass   = 'warn-pmt';
+    } else {
+      pmtDisplay = 'Defina a data';
+      pmtClass   = '';
+    }
+  } else {
+    pmtDisplay = fmtBRL(pmtResult.pmt) + '/mês';
+    pmtClass   = 'pmt';
+  }
+
+  // Prazo
+  let deadlineHtml = '';
+  if (p.target_date) {
+    let cls = 'project-deadline';
+    let txt = fmtMonth(p.target_date);
+    if (mos !== null) {
+      if (mos < 0)  { cls += ' overdue'; txt += ' — vencido!'; }
+      else if (mos <= 3) { cls += ' soon'; txt += ` — ${mos} mes${mos !== 1 ? 'es' : ''}!`; }
+      else txt += ` — ${mos} meses`;
+    }
+    deadlineHtml = `
+      <div class="${cls}">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/>
+          <line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        ${txt}
+      </div>`;
+  }
+
+  // Cor da barra
+  let barCls = '';
+  if (done)       barCls = 'done';
+  else if (pct >= 80) barCls = 'warn';
+
+  return `
+    <div class="project-card ${pCfg.cls}${!active ? ' inactive' : ''}" data-id="${p.id}">
+      <div class="project-card-top">
+        <div class="project-icon-name">
+          <div class="project-type-icon" style="background:${type.bg};color:${type.color}">
+            ${type.emoji}
+          </div>
+          <div>
+            <div class="project-name" title="${escHtml(p.name)}">${escHtml(p.name)}</div>
+            <div class="project-type-label">${type.label}</div>
+          </div>
+        </div>
+        <div class="project-actions">
+          <label class="toggle-switch" title="${active ? 'Pausar' : 'Ativar'} projeto">
+            <input type="checkbox" class="project-toggle" data-id="${p.id}" ${active ? 'checked' : ''} />
+            <span class="toggle-slider"></span>
+          </label>
+          <button class="project-action-btn" title="Editar" data-action="edit" data-id="${p.id}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+          <button class="project-action-btn danger" title="Excluir" data-action="delete" data-id="${p.id}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14H6L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/>
+              <path d="M9 6V4h6v2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Valores principais -->
+      <div class="project-values">
+        <div class="project-value-item">
+          <div class="project-value-label">Valor alvo</div>
+          <div class="project-value-num">${fmtBRL(target)}</div>
+        </div>
+        <div class="project-value-item">
+          <div class="project-value-label">Já acumulado</div>
+          <div class="project-value-num">${fmtBRL(alloc)}</div>
+        </div>
+        <div class="project-value-item">
+          <div class="project-value-label">Aporte mensal</div>
+          <div class="project-value-num ${pmtClass}">${pmtDisplay}</div>
+        </div>
+        <div class="project-value-item">
+          <div class="project-value-label">Falta guardar</div>
+          <div class="project-value-num">${fmtBRL(Math.max(0, target - alloc))}</div>
+        </div>
+      </div>
+
+      <!-- Barra de progresso -->
+      <div class="project-progress-wrap">
+        <div class="project-progress-info">
+          <span class="progress-label">Progresso</span>
+          <span class="progress-pct">${pct.toFixed(1)}%</span>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill ${barCls}" style="width:${pct}%"></div>
+        </div>
+      </div>
+
+      ${deadlineHtml}
+    </div>`;
+}
+
+/* ─── Card "Adicionar" ─── */
+function renderAddCard(priority) {
+  return `
+    <div class="project-add-card" onclick="openModal('${priority}')">
+      <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      <span>Adicionar ${PRIORITY_CONFIG[priority].label.toLowerCase()}</span>
+    </div>`;
+}
+
+/* ──────────────────────────────────────────────
+   SUMMARY BAR
+─────────────────────────────────────────────── */
+function renderSummaryBar() {
+  if (projects.length === 0) {
+    document.getElementById('summary-bar').style.display = 'none';
+    return;
+  }
+
+  const pmtByPriority = { Essencial: 0, Desejo: 0, Sonho: 0 };
+  let totalPMT = 0;
+
+  projects.filter(p => p.is_active !== false).forEach(p => {
+    const r = calcPMT(p.target_amount, p.allocated_amount, p.target_date, Number(p.monthly_rate) || 0);
+    if (r.ok && !r.done) {
+      const pmt = r.pmt || 0;
+      pmtByPriority[p.priority] = (pmtByPriority[p.priority] || 0) + pmt;
+      totalPMT += pmt;
+    }
+  });
+
+  document.getElementById('sum-essencial').textContent = fmtBRL(pmtByPriority['Essencial']);
+  document.getElementById('sum-desejo').textContent    = fmtBRL(pmtByPriority['Desejo']);
+  document.getElementById('sum-sonho').textContent     = fmtBRL(pmtByPriority['Sonho']);
+  document.getElementById('sum-total').textContent     = fmtBRL(totalPMT);
+  document.getElementById('summary-bar').style.display = 'flex';
+}
+
+/* ──────────────────────────────────────────────
+   MODAL — TIPO GRID
+─────────────────────────────────────────────── */
+function renderTypeGrid() {
+  const grid = document.getElementById('type-grid');
+  grid.innerHTML = PROJECT_TYPES.map(t => `
+    <div class="type-option${t.id === selectedType ? ' selected' : ''}"
+         data-type="${t.id}" onclick="selectType('${t.id}')">
+      <span class="type-emoji">${t.emoji}</span>
+      <span class="type-name">${t.label}</span>
+    </div>`).join('');
+}
+
+function selectType(typeId) {
+  selectedType = typeId;
+  document.querySelectorAll('.type-option').forEach(el => {
+    el.classList.toggle('selected', el.dataset.type === typeId);
+  });
+}
+
+/* ──────────────────────────────────────────────
+   MODAL — ABRIR
+─────────────────────────────────────────────── */
+function openModal(priority = null, projectId = null) {
+  editingId = projectId;
+  const modal = document.getElementById('modal-project');
+
+  if (projectId) {
+    // Edição
+    const p = projects.find(x => x.id === projectId);
+    if (!p) return;
+    document.getElementById('modal-project-title').textContent = 'Editar projeto';
+    selectedType = p.project_type || 'outro';
+    document.getElementById('field-priority').value  = p.priority || 'Sonho';
+    document.getElementById('field-name').value      = p.name || '';
+    document.getElementById('field-target').value    = p.target_amount || '';
+    document.getElementById('field-allocated').value = p.allocated_amount || 0;
+    // target_date pode ser 'YYYY-MM-DD', precisa virar 'YYYY-MM' para input type=month
+    document.getElementById('field-date').value      = (p.target_date || '').substring(0,7);
+    document.getElementById('field-rate').value      = p.monthly_rate != null ? p.monthly_rate : 0.5;
+  } else {
+    // Novo
+    document.getElementById('modal-project-title').textContent = 'Novo projeto';
+    selectedType = 'viagem';
+    document.getElementById('field-priority').value  = priority || 'Sonho';
+    document.getElementById('field-name').value      = '';
+    document.getElementById('field-target').value    = '';
+    document.getElementById('field-allocated').value = 0;
+    document.getElementById('field-date').value      = '';
+    document.getElementById('field-rate').value      = 0.5;
+  }
+
+  renderTypeGrid();
+  updatePMTPreview();
+  modal.classList.add('open');
+  setTimeout(() => document.getElementById('field-name').focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById('modal-project').classList.remove('open');
+  editingId = null;
+}
+
+/* ──────────────────────────────────────────────
+   PMT PREVIEW EM TEMPO REAL
+─────────────────────────────────────────────── */
+function updatePMTPreview() {
+  const target    = parseFloat(document.getElementById('field-target').value)    || 0;
+  const allocated = parseFloat(document.getElementById('field-allocated').value) || 0;
+  const dateVal   = document.getElementById('field-date').value;
+  const ratePct   = parseFloat(document.getElementById('field-rate').value)      || 0;
+
+  const preview = document.getElementById('pmt-preview');
+  const label   = document.getElementById('pmt-preview-label');
+  const amount  = document.getElementById('pmt-preview-value');
+
+  if (!target || !dateVal) {
+    label.textContent  = 'Preencha o valor alvo e a data para calcular';
+    amount.textContent = '—';
+    preview.className  = 'pmt-preview';
+    return;
+  }
+
+  const r = calcPMT(target, allocated, dateVal, ratePct);
+
+  if (r.done) {
+    label.textContent  = '✅ Objetivo já atingido!';
+    amount.textContent = fmtBRL(0);
+    preview.className  = 'pmt-preview';
+    return;
+  }
+
+  if (!r.ok) {
+    if (r.months <= 0) {
+      label.textContent  = '⚠️ A data alvo já passou — ajuste a data';
+      amount.textContent = '—';
+    } else {
+      label.textContent  = 'Data inválida';
+      amount.textContent = '—';
+    }
+    preview.className = 'pmt-preview warn-preview';
+    return;
+  }
+
+  label.textContent  = `Aporte mensal estimado (${r.months} meses · ${ratePct}%/mês)`;
+  amount.textContent = fmtBRL(r.pmt);
+  preview.className  = 'pmt-preview';
+}
+
+/* ──────────────────────────────────────────────
+   SALVAR PROJETO
+─────────────────────────────────────────────── */
+async function saveProject() {
+  const name      = document.getElementById('field-name').value.trim();
+  const priority  = document.getElementById('field-priority').value;
+  const target    = parseFloat(document.getElementById('field-target').value)    || 0;
+  const allocated = parseFloat(document.getElementById('field-allocated').value) || 0;
+  const dateVal   = document.getElementById('field-date').value;   // YYYY-MM
+  const ratePct   = parseFloat(document.getElementById('field-rate').value)      || 0;
+
+  // Validações
+  if (!name)   { showToast('Informe o nome do projeto', 'error'); return; }
+  if (!target) { showToast('Informe o valor alvo', 'error'); return; }
+  if (!dateVal){ showToast('Informe a data alvo', 'error'); return; }
+
+  // Converter YYYY-MM para YYYY-MM-01 (primeiro dia do mês) para salvar no banco
+  const targetDate = dateVal + '-01';
+
+  const btn = document.getElementById('modal-project-save');
+  btn.classList.add('btn-loading');
+  btn.disabled = true;
+
+  const payload = {
+    household_id:     householdId,
+    name,
+    project_type:     selectedType,
+    priority,
+    target_amount:    target,
+    allocated_amount: allocated,
+    target_date:      targetDate,
+    monthly_rate:     ratePct,
+    is_active:        true,
+  };
+
+  let error;
+  if (editingId) {
+    const res = await _supabase
+      .from('projects')
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq('id', editingId)
+      .eq('household_id', householdId);
+    error = res.error;
+  } else {
+    const res = await _supabase.from('projects').insert(payload);
+    error = res.error;
+  }
+
+  btn.classList.remove('btn-loading');
+  btn.disabled = false;
+
+  if (error) {
+    showToast('Erro ao salvar: ' + error.message, 'error');
+    return;
+  }
+
+  showToast(editingId ? 'Projeto atualizado!' : 'Projeto criado!', 'success');
+  closeModal();
+  await loadProjects();
+}
+
+/* ──────────────────────────────────────────────
+   TOGGLE ATIVAR/PAUSAR
+─────────────────────────────────────────────── */
+async function toggleProject(id, active) {
+  const { error } = await _supabase
+    .from('projects')
+    .update({ is_active: active, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('household_id', householdId);
+
+  if (error) {
+    showToast('Erro ao atualizar: ' + error.message, 'error');
+    // Reverter visualmente
+    await loadProjects();
+    return;
+  }
+
+  // Atualizar localmente sem re-render completo para evitar flicker
+  const p = projects.find(x => x.id === id);
+  if (p) p.is_active = active;
+  renderAll();
+  showToast(active ? 'Projeto ativado' : 'Projeto pausado', 'info');
+}
+
+/* ──────────────────────────────────────────────
+   EXCLUIR PROJETO
+─────────────────────────────────────────────── */
+function confirmDelete(id) {
+  const p = projects.find(x => x.id === id);
+  if (!p) return;
+  deleteId = id;
+  document.getElementById('confirm-project-name').textContent = `"${p.name}"`;
+  document.getElementById('modal-confirm').classList.add('open');
+}
+
+async function deleteProject() {
+  if (!deleteId) return;
+
+  const btn = document.getElementById('modal-confirm-ok');
+  btn.classList.add('btn-loading');
+  btn.disabled = true;
+
+  const { error } = await _supabase
+    .from('projects')
+    .delete()
+    .eq('id', deleteId)
+    .eq('household_id', householdId);
+
+  btn.classList.remove('btn-loading');
+  btn.disabled = false;
+
+  document.getElementById('modal-confirm').classList.remove('open');
+
+  if (error) {
+    showToast('Erro ao excluir: ' + error.message, 'error');
+    return;
+  }
+
+  showToast('Projeto excluído', 'info');
+  deleteId = null;
+  await loadProjects();
+}
+
+/* ──────────────────────────────────────────────
+   BIND EVENTS DOS CARDS (delegação)
+─────────────────────────────────────────────── */
+function bindCardEvents() {
+  // Toggles
+  document.querySelectorAll('.project-toggle').forEach(toggle => {
+    toggle.addEventListener('change', e => {
+      e.stopPropagation();
+      toggleProject(e.target.dataset.id, e.target.checked);
+    });
+  });
+
+  // Editar / Excluir
+  document.querySelectorAll('[data-action]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      const id     = btn.dataset.id;
+      if (action === 'edit')   openModal(null, id);
+      if (action === 'delete') confirmDelete(id);
+    });
+  });
+}
+
+/* ──────────────────────────────────────────────
+   BIND EVENTS GERAIS
+─────────────────────────────────────────────── */
+function bindEvents() {
+  // Botões "Novo projeto"
+  document.getElementById('btn-new-header')  .addEventListener('click', () => openModal());
+  document.getElementById('btn-new-topbar')  .addEventListener('click', () => openModal());
+
+  // Modal — fechar
+  document.getElementById('modal-project-close') .addEventListener('click', closeModal);
+  document.getElementById('modal-project-cancel').addEventListener('click', closeModal);
+  document.getElementById('modal-project').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal();
+  });
+
+  // Modal — salvar
+  document.getElementById('modal-project-save').addEventListener('click', saveProject);
+
+  // PMT em tempo real
+  ['field-target','field-allocated','field-date','field-rate'].forEach(id => {
+    document.getElementById(id).addEventListener('input', updatePMTPreview);
+  });
+
+  // Modal confirm excluir
+  document.getElementById('modal-confirm-close') .addEventListener('click', () => {
+    document.getElementById('modal-confirm').classList.remove('open');
+  });
+  document.getElementById('modal-confirm-cancel').addEventListener('click', () => {
+    document.getElementById('modal-confirm').classList.remove('open');
+  });
+  document.getElementById('modal-confirm').addEventListener('click', e => {
+    if (e.target === e.currentTarget)
+      document.getElementById('modal-confirm').classList.remove('open');
+  });
+  document.getElementById('modal-confirm-ok').addEventListener('click', deleteProject);
+
+  // Logout
+  document.getElementById('btn-logout').addEventListener('click', async () => {
+    await _supabase.auth.signOut();
+    window.location.href = 'index.html';
+  });
+
+  // Mobile menu
+  document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('open');
+  });
+  document.getElementById('sidebar-overlay').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('open');
+  });
+
+  // Escape fecha modais
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      document.getElementById('modal-project').classList.remove('open');
+      document.getElementById('modal-confirm').classList.remove('open');
+    }
+  });
+}
+
+/* ──────────────────────────────────────────────
+   UTILITÁRIOS
+─────────────────────────────────────────────── */
+function escHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* ──────────────────────────────────────────────
+   START
+─────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
