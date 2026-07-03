@@ -972,7 +972,8 @@
   let householdId     = null;
   let myMemberId       = null;
   let partnerMemberId  = null;
-  let currentDate     = new Date();
+  /* Normalizado para o dia 1: setMonth() em dia 29-31 pularia meses (ex: 31/07 → "junho" viraria 01/07) */
+  let currentDate     = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let allTransactions = [];
   let allAccounts      = [];   // contas do household (com member_id)
   let allMembers        = [];  // membros do household
@@ -999,6 +1000,144 @@
     pix:'Pix',debito:'Débito',credito:'Crédito',
     dinheiro:'Dinheiro',ted:'TED / DOC',boleto:'Boleto',outro:'Outro',
   };
+
+  /* ═══════════════════════════════════════════════════════════════
+     ETAPA 3 — LÓGICA DE FATURA (funções puras + geração no banco)
+
+     Convenção do ciclo: a fatura do período P (YYYY-MM) fecha no
+     closing_day do mês P. Compra em dia < fechamento → fatura de P;
+     compra no dia do fechamento ou depois → fatura de P+1 (igual aos
+     cartões reais: a compra "não entra mais" na fatura que fecha hoje).
+     Dias 29-31 são clampados ao último dia do mês (ex: fecha dia 31 →
+     em fevereiro fecha dia 28/29).
+     Testes: runInvoiceTests() no console do navegador.
+     ═══════════════════════════════════════════════════════════════ */
+
+  function lastDayOfMonth(y, mIdx) { return new Date(y, mIdx + 1, 0).getDate(); }
+  function clampDayToMonth(y, mIdx, day) { return Math.min(day, lastDayOfMonth(y, mIdx)); }
+  function dateToISOParts(y, mIdx, d) {
+    return `${y}-${String(mIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
+  function periodToParts(period) {
+    const [y, m] = period.split('-').map(Number);
+    return { y, mIdx: m - 1 };
+  }
+  function partsToPeriod(y, mIdx) {
+    const d = new Date(y, mIdx, 1); // normaliza overflow de mês (mIdx 12 → jan do ano seguinte)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  function addMonthsToPeriod(period, n) {
+    const { y, mIdx } = periodToParts(period);
+    return partsToPeriod(y, mIdx + n);
+  }
+  function periodLabel(period) {
+    const { y, mIdx } = periodToParts(period);
+    return `${MONTHS[mIdx]} ${y}`;
+  }
+
+  /* Em qual período (fatura) cai uma compra, dado o dia de fechamento do cartão */
+  function computeInvoicePeriod(closingDay, purchaseDateISO) {
+    const [y, m, d] = purchaseDateISO.split('-').map(Number);
+    const mIdx = m - 1;
+    const effectiveClosing = clampDayToMonth(y, mIdx, closingDay);
+    return d < effectiveClosing ? partsToPeriod(y, mIdx) : partsToPeriod(y, mIdx + 1);
+  }
+
+  /* closing_date e due_date da fatura do período P.
+     due_day <= closing_day significa que o vencimento cai no mês seguinte ao fechamento
+     (ex: fecha dia 25, vence dia 5 do mês seguinte). */
+  function computeInvoiceDates(closingDay, dueDay, period) {
+    const { y, mIdx } = periodToParts(period);
+    const closingDate = dateToISOParts(y, mIdx, clampDayToMonth(y, mIdx, closingDay));
+    const dueBase = new Date(y, dueDay <= closingDay ? mIdx + 1 : mIdx, 1);
+    const dy = dueBase.getFullYear(), dm = dueBase.getMonth();
+    const dueDate = dateToISOParts(dy, dm, clampDayToMonth(dy, dm, dueDay));
+    return { closingDate, dueDate };
+  }
+
+  /* Divide um valor em N parcelas somando exatamente o total (resto de
+     centavos vai na 1ª parcela: 100 / 3 → 33,34 + 33,33 + 33,33) */
+  function splitInstallments(totalAmount, n) {
+    const totalCents = Math.round(totalAmount * 100);
+    const base = Math.floor(totalCents / n);
+    const first = totalCents - base * (n - 1);
+    return Array.from({ length: n }, (_, i) => (i === 0 ? first : base) / 100);
+  }
+
+  /* Busca (ou cria, se não existirem) as faturas de um cartão para os períodos
+     pedidos. Corrida com o UNIQUE (credit_card_id, period): se outro insert
+     ganhar (erro 23505), re-busca em vez de falhar. Retorna na ordem dos períodos. */
+  async function getOrCreateInvoices(card, periods) {
+    const { data: existing, error } = await _supabase
+      .from('invoices')
+      .select('*')
+      .eq('credit_card_id', card.id)
+      .in('period', periods);
+    if (error) throw new Error('Erro ao buscar faturas: ' + error.message);
+
+    const byPeriod = new Map((existing || []).map(inv => [inv.period, inv]));
+    const missing = periods.filter(p => !byPeriod.has(p));
+
+    if (missing.length > 0) {
+      const rows = missing.map(p => {
+        const { closingDate, dueDate } = computeInvoiceDates(card.closing_day, card.due_day, p);
+        return {
+          credit_card_id: card.id,
+          period: p,
+          closing_date: closingDate,
+          due_date: dueDate,
+          total_amount: 0,
+          status: 'open',
+        };
+      });
+      const { data: inserted, error: insErr } = await _supabase
+        .from('invoices').insert(rows).select();
+      if (insErr && insErr.code !== '23505') throw new Error('Erro ao criar fatura: ' + insErr.message);
+      (inserted || []).forEach(inv => byPeriod.set(inv.period, inv));
+
+      const stillMissing = periods.filter(p => !byPeriod.has(p));
+      if (stillMissing.length > 0) {
+        const { data: refetched } = await _supabase
+          .from('invoices')
+          .select('*')
+          .eq('credit_card_id', card.id)
+          .in('period', stillMissing);
+        (refetched || []).forEach(inv => byPeriod.set(inv.period, inv));
+      }
+    }
+    return periods.map(p => byPeriod.get(p));
+  }
+
+  /* Casos de teste da lógica pura — rodar no console: runInvoiceTests() */
+  function runInvoiceTests() {
+    const cases = [
+      ['compra antes do fechamento',        () => computeInvoicePeriod(5, '2026-07-03'),  '2026-07'],
+      ['compra no dia do fechamento',       () => computeInvoicePeriod(5, '2026-07-05'),  '2026-08'],
+      ['compra depois do fechamento',       () => computeInvoicePeriod(5, '2026-07-06'),  '2026-08'],
+      ['virada de ano',                     () => computeInvoicePeriod(5, '2026-12-31'),  '2027-01'],
+      ['fechamento 31 em fevereiro (clamp)',() => computeInvoicePeriod(31, '2026-02-27'), '2026-02'],
+      ['fev: dia 28 = fechamento clampado', () => computeInvoicePeriod(31, '2026-02-28'), '2026-03'],
+      ['datas: vence depois de fechar',     () => JSON.stringify(computeInvoiceDates(5, 12, '2026-07')),  '{"closingDate":"2026-07-05","dueDate":"2026-07-12"}'],
+      ['datas: vence no mês seguinte',      () => JSON.stringify(computeInvoiceDates(25, 5, '2026-07')),  '{"closingDate":"2026-07-25","dueDate":"2026-08-05"}'],
+      ['datas: virada de ano no vencimento',() => JSON.stringify(computeInvoiceDates(25, 5, '2026-12')),  '{"closingDate":"2026-12-25","dueDate":"2027-01-05"}'],
+      ['datas: clamp em fevereiro',         () => JSON.stringify(computeInvoiceDates(31, 31, '2026-02')), '{"closingDate":"2026-02-28","dueDate":"2026-03-31"}'],
+      ['soma de períodos',                  () => addMonthsToPeriod('2026-11', 3), '2027-02'],
+      ['parcelas: resto na primeira',       () => JSON.stringify(splitInstallments(100, 3)),  '[33.34,33.33,33.33]'],
+      ['parcelas: valor exato',             () => JSON.stringify(splitInstallments(90, 3)),   '[30,30,30]'],
+      ['parcelas: centavos mínimos',        () => JSON.stringify(splitInstallments(0.05, 3)), '[0.03,0.01,0.01]'],
+      ['parcelas: soma sempre fecha',       () => splitInstallments(123.45, 7).reduce((s, v) => s + Math.round(v * 100), 0), 12345],
+    ];
+    let pass = 0;
+    cases.forEach(([name, fn, expected]) => {
+      const got = fn();
+      const ok = got === expected;
+      if (ok) pass++;
+      console[ok ? 'log' : 'error'](`${ok ? '✅' : '❌'} ${name}: ${got}${ok ? '' : ` (esperado: ${expected})`}`);
+    });
+    console.log(`${pass}/${cases.length} testes passaram`);
+    return pass === cases.length;
+  }
 
   /* ── INIT ── */
   (async () => {
@@ -1743,7 +1882,11 @@
     const [y, m, d] = iso.split('-');
     return `${d}/${m}/${y}`;
   }
-  function todayISO() { return new Date().toISOString().split('T')[0]; }
+  function todayISO() {
+    /* Data local (não UTC): toISOString() após as 21h em Brasília devolveria o dia seguinte */
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  }
   function escHtml(str) {
     return String(str)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
