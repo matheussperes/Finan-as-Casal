@@ -429,6 +429,45 @@
       color: var(--text-muted);
       font-size: .875rem;
     }
+    .invoice-alert {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      border-radius: var(--radius-lg);
+      padding: 14px 18px;
+      margin-bottom: 12px;
+    }
+    .invoice-alert .ia-text { flex: 1; font-size: .8438rem; color: #92400e; }
+    .invoice-alert .ia-text strong { display: block; font-size: .875rem; color: #78350f; margin-bottom: 2px; }
+    .invoice-alert.overdue { background: #fff1f2; border-color: #fda4af; }
+    .invoice-alert.overdue .ia-text { color: #9f1239; }
+    .invoice-alert.overdue .ia-text strong { color: #881337; }
+    .invoice-card-group { margin-bottom: 20px; }
+    .invoice-card-group:last-child { margin-bottom: 0; }
+    .invoice-group-title {
+      font-size: .8125rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .invoice-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      margin-bottom: 8px;
+    }
+    .invoice-row:last-child { margin-bottom: 0; }
+    .invoice-row .inv-period { font-weight: 600; font-size: .8438rem; color: var(--text-primary); min-width: 130px; }
+    .invoice-row .inv-info { flex: 1; font-size: .75rem; color: var(--text-muted); }
+    tbody tr.tx-ignored td { opacity: .55; }
   </style>
 </head>
 <body>
@@ -561,6 +600,16 @@
             </svg>
           </button>
         </div>
+        <button class="btn btn-secondary" id="btn-invoices">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="12" y1="18" x2="12" y2="12"/>
+            <line x1="9" y1="15" x2="15" y2="15"/>
+          </svg>
+          Faturas
+        </button>
         <button class="btn btn-secondary" id="btn-manage-cards">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -587,6 +636,8 @@
           <p>Registre e acompanhe todas as movimentações do mês</p>
         </div>
       </div>
+
+      <div id="invoice-alerts" style="display:none"></div>
 
       <div class="tabs-bar" id="tabs-bar">
         <!-- Preenchido dinamicamente via JS (ordem conforme quem logou) -->
@@ -981,6 +1032,67 @@
   </div>
 </div>
 
+<!-- Modal lista de faturas -->
+<div class="modal-overlay" id="modal-invoices">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">Faturas dos cartões</span>
+      <button class="btn-ghost btn-icon modal-close" id="modal-invoices-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div id="invoices-list-body" style="max-height:60vh;overflow-y:auto">
+      <!-- Preenchido dinamicamente via JS -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modal-invoices-done">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal pagamento de fatura -->
+<div class="modal-overlay" id="modal-pay">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <span class="modal-title">Pagar fatura</span>
+      <button class="btn-ghost btn-icon modal-close" id="modal-pay-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div id="pay-info" style="background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px 16px;font-size:.8438rem;color:var(--text-secondary);margin-bottom:18px">
+      <!-- Resumo da fatura preenchido via JS -->
+    </div>
+    <div class="modal-form-grid">
+      <div class="form-group full">
+        <label class="form-label">Valor do pagamento</label>
+        <div class="amount-input-wrap">
+          <span class="currency-prefix">R$</span>
+          <input class="input" type="number" id="pay-amount" placeholder="0,00" min="0" step="0.01" />
+        </div>
+        <span class="form-hint" style="color:var(--text-muted);font-size:.75rem">Pode ser menor que o total (pagamento parcial).</span>
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Pagar com a conta</label>
+        <select class="input select" id="pay-account"></select>
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Data do pagamento</label>
+        <input class="input" type="date" id="pay-date" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modal-pay-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="modal-pay-confirm">Confirmar pagamento</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 
 <script>
@@ -1209,6 +1321,8 @@
     }
 
     await loadCardFinanceData();
+    await refreshInvoiceStatuses();
+    renderInvoiceAlerts();
 
     renderTabs();
     renderJointOwnerFilter();
@@ -1268,6 +1382,225 @@
       .reduce((s, i) => s + Math.max(0, invoiceComputedTotal(i.id) - invoicePaidSum(i.id)), 0);
     return Number(card.credit_limit) - committed;
   }
+
+  /* ═══════════════════════════════════════════════════════════════
+     ETAPA 5 — PAGAMENTO DE FATURA
+     Fluxo: fatura fecha automaticamente na closing_date (open→closed,
+     com snapshot do total). No vencimento o sistema SUGERE o pagamento
+     (banner com valor restante + conta do cartão), e o usuário confirma
+     ou edita (valor parcial / outra conta) antes de efetivar.
+     Confirmar gera: 1 invoice_payments + 1 transaction de saída com
+     is_ignored=true (aparece no extrato mas não soma nos KPIs — o gasto
+     já foi contado nas compras do cartão; contar o pagamento duplicaria).
+     Pagamento parcial mantém a fatura 'closed' com o restante visível.
+     ═══════════════════════════════════════════════════════════════ */
+
+  let payingInvoiceId = null;
+
+  /* Fecha faturas cuja data de fechamento já passou. Fatura vazia (total 0)
+     vira 'paid' direto — não há o que pagar. */
+  async function refreshInvoiceStatuses() {
+    const today = todayISO();
+    const toClose = allInvoices.filter(i => i.status === 'open' && i.closing_date <= today);
+    for (const inv of toClose) {
+      const total = invoiceComputedTotal(inv.id);
+      const newStatus = total <= 0.004 ? 'paid' : 'closed';
+      const { error } = await _supabase.from('invoices')
+        .update({ status: newStatus, total_amount: total })
+        .eq('id', inv.id);
+      if (!error) { inv.status = newStatus; inv.total_amount = total; }
+    }
+  }
+
+  /* Recalcula status pós-mudança em pagamentos (ex: pagamento excluído):
+     'paid' com restante > 0 volta para 'closed' */
+  async function reconcileInvoiceStatus(invoiceId) {
+    const inv = allInvoices.find(i => i.id === invoiceId);
+    if (!inv || inv.status !== 'paid') return;
+    const remaining = invoiceComputedTotal(invoiceId) - invoicePaidSum(invoiceId);
+    if (remaining > 0.004) {
+      const { error } = await _supabase.from('invoices').update({ status: 'closed' }).eq('id', invoiceId);
+      if (!error) inv.status = 'closed';
+    }
+  }
+
+  function invoiceRemaining(inv) {
+    return invoiceComputedTotal(inv.id) - invoicePaidSum(inv.id);
+  }
+
+  /* Banner de sugestão: faturas fechadas com vencimento hoje ou vencidas e saldo a pagar */
+  function renderInvoiceAlerts() {
+    const wrap = document.getElementById('invoice-alerts');
+    const today = todayISO();
+    const due = allInvoices
+      .filter(i => i.status === 'closed' && i.due_date <= today)
+      .map(i => ({ inv: i, remaining: invoiceRemaining(i) }))
+      .filter(x => x.remaining > 0.004);
+
+    if (due.length === 0) { wrap.innerHTML = ''; wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    wrap.innerHTML = due.map(({ inv, remaining }) => {
+      const card = allCreditCards.find(c => c.id === inv.credit_card_id);
+      const overdue = inv.due_date < today;
+      return `
+        <div class="invoice-alert ${overdue ? 'overdue' : ''}">
+          <span style="font-size:1.25rem">💳</span>
+          <div class="ia-text">
+            <strong>Fatura de ${periodLabel(inv.period)} — ${escHtml(card?.name || 'Cartão')}</strong>
+            ${overdue ? `Venceu em ${fmtDate(inv.due_date)}` : 'Vence hoje'} · restante ${fmtBRL(remaining)}
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openPayModal('${inv.id}')">Pagar fatura</button>
+        </div>`;
+    }).join('');
+  }
+
+  /* ── Modal lista de faturas ── */
+  function openInvoicesModal() {
+    renderInvoicesList();
+    openModal('modal-invoices');
+  }
+
+  function renderInvoicesList() {
+    const body = document.getElementById('invoices-list-body');
+    if (allCreditCards.length === 0) {
+      body.innerHTML = `<div class="card-list-empty">Nenhum cartão cadastrado. Crie um cartão em "Gerenciar Cartões" para ter faturas.</div>`;
+      return;
+    }
+    const STATUS_BADGE = { open: 'badge-blue', closed: 'badge-amber', paid: 'badge-green' };
+    const STATUS_LABEL = { open: 'Aberta', closed: 'Fechada', paid: 'Paga' };
+    body.innerHTML = allCreditCards.map(card => {
+      const invs = allInvoices
+        .filter(i => i.credit_card_id === card.id)
+        .slice()
+        .sort((a, b) => b.period.localeCompare(a.period));
+      const rows = invs.length === 0
+        ? `<div class="card-list-empty" style="padding:16px">Sem faturas ainda — elas são criadas junto com a primeira compra no cartão.</div>`
+        : invs.map(inv => {
+            const total = invoiceComputedTotal(inv.id);
+            const paid = invoicePaidSum(inv.id);
+            const remaining = total - paid;
+            const canPay = inv.status === 'closed' && remaining > 0.004;
+            return `
+              <div class="invoice-row">
+                <span class="inv-period">${periodLabel(inv.period)}</span>
+                <span class="badge ${STATUS_BADGE[inv.status] || 'badge-slate'}">${STATUS_LABEL[inv.status] || inv.status}</span>
+                <span class="inv-info">
+                  Total ${fmtBRL(total)}${paid > 0 ? ` · Pago ${fmtBRL(paid)} · Restante ${fmtBRL(remaining)}` : ''} · Vence ${fmtDate(inv.due_date)}
+                </span>
+                ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="openPayModal('${inv.id}')">Pagar</button>` : ''}
+              </div>`;
+          }).join('');
+      return `
+        <div class="invoice-card-group">
+          <div class="invoice-group-title">💳 ${escHtml(card.name)}
+            <span style="font-weight:400;color:var(--text-muted)">· disponível ${fmtBRL(cardAvailableLimit(card))}</span>
+          </div>
+          ${rows}
+        </div>`;
+    }).join('');
+  }
+
+  /* ── Modal de pagamento (sugestão editável) ── */
+  function openPayModal(invoiceId) {
+    const inv = allInvoices.find(i => i.id === invoiceId);
+    if (!inv) return;
+    const card = allCreditCards.find(c => c.id === inv.credit_card_id);
+    payingInvoiceId = invoiceId;
+
+    const total = invoiceComputedTotal(inv.id);
+    const paid = invoicePaidSum(inv.id);
+    const remaining = total - paid;
+
+    document.getElementById('pay-info').innerHTML = `
+      <strong style="color:var(--text-primary)">💳 ${escHtml(card?.name || 'Cartão')} — ${periodLabel(inv.period)}</strong><br>
+      Total da fatura: ${fmtBRL(total)}${paid > 0 ? ` · Já pago: ${fmtBRL(paid)}` : ''} · <strong>Restante: ${fmtBRL(remaining)}</strong><br>
+      Vencimento: ${fmtDate(inv.due_date)}
+    `;
+    /* Sugestão: valor = restante, conta = a conta vinculada ao cartão — ambos editáveis */
+    document.getElementById('pay-amount').value = remaining.toFixed(2);
+    const accSel = document.getElementById('pay-account');
+    accSel.innerHTML = allAccounts.map(acc => {
+      const ownerName = acc.owner_type === 'joint'
+        ? 'Conjunta'
+        : (allMembers.find(m => m.id === acc.member_id)?.name?.split(' ')[0] || '?');
+      return `<option value="${acc.id}">${escHtml(acc.name)} — ${ownerName}</option>`;
+    }).join('');
+    accSel.value = card?.account_id || (allAccounts[0]?.id ?? '');
+    document.getElementById('pay-date').value = todayISO();
+
+    closeModal('modal-invoices');
+    openModal('modal-pay');
+  }
+
+  async function confirmPayInvoice() {
+    const inv = allInvoices.find(i => i.id === payingInvoiceId);
+    if (!inv) return;
+    const card = allCreditCards.find(c => c.id === inv.credit_card_id);
+    const amount = parseFloat(document.getElementById('pay-amount').value);
+    const accountId = document.getElementById('pay-account').value;
+    const date = document.getElementById('pay-date').value;
+
+    const remaining = invoiceRemaining(inv);
+    if (!amount || amount <= 0) { toast('Informe um valor válido.', 'error'); return; }
+    if (amount > remaining + 0.004) { toast(`O valor excede o restante da fatura (${fmtBRL(remaining)}).`, 'error'); return; }
+    if (!accountId) { toast('Selecione a conta de pagamento.', 'error'); return; }
+    if (!date) { toast('Informe a data do pagamento.', 'error'); return; }
+
+    const btn = document.getElementById('modal-pay-confirm');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+    const done = () => { btn.classList.remove('btn-loading'); btn.disabled = false; };
+
+    /* 1. Lançamento de saída na conta escolhida — is_ignored=true para não
+       duplicar nos KPIs (as compras do cartão já contaram como saída) */
+    const { data: txData, error: txErr } = await _supabase.from('transactions').insert({
+      household_id:   householdId,
+      account_id:     accountId,
+      member_id:      deriveMemberIdFromAccount(accountId),
+      direction:      'expense',
+      amount,
+      description:    `Pagamento de fatura — ${card?.name || 'Cartão'} (${periodLabel(inv.period)})`,
+      date,
+      classification: 'Classificação neutra',
+      payment_method: 'debito',
+      is_ignored:     true,
+    }).select().maybeSingle();
+    if (txErr || !txData) { done(); toast('Erro ao registrar o pagamento: ' + (txErr?.message || 'sem retorno'), 'error'); return; }
+
+    /* 2. Registro do pagamento vinculado à fatura e à transação */
+    const { error: payErr } = await _supabase.from('invoice_payments').insert({
+      invoice_id:           inv.id,
+      amount,
+      paid_date:            date,
+      paid_from_account_id: accountId,
+      transaction_id:       txData.id,
+    });
+    if (payErr) {
+      /* desfaz a transação para não deixar saída órfã no extrato */
+      await _supabase.from('transactions').delete().eq('id', txData.id);
+      done(); toast('Erro ao registrar o pagamento: ' + payErr.message, 'error'); return;
+    }
+
+    /* 3. Quitou tudo → 'paid'; parcial → permanece 'closed' com restante visível */
+    if (amount >= remaining - 0.004) {
+      const { error: stErr } = await _supabase.from('invoices').update({ status: 'paid' }).eq('id', inv.id);
+      if (!stErr) inv.status = 'paid';
+    }
+
+    done();
+    toast(amount >= remaining - 0.004 ? 'Fatura paga! 🎉' : `Pagamento parcial registrado — restam ${fmtBRL(remaining - amount)}.`, 'success');
+    closeModal('modal-pay');
+    payingInvoiceId = null;
+    await loadCardFinanceData();
+    renderInvoiceAlerts();
+    await loadTransactions();
+  }
+
+  document.getElementById('btn-invoices').addEventListener('click', openInvoicesModal);
+  document.getElementById('modal-invoices-close').addEventListener('click', () => closeModal('modal-invoices'));
+  document.getElementById('modal-invoices-done').addEventListener('click', () => closeModal('modal-invoices'));
+  document.getElementById('modal-pay-close').addEventListener('click', () => closeModal('modal-pay'));
+  document.getElementById('modal-pay-cancel').addEventListener('click', () => closeModal('modal-pay'));
+  document.getElementById('modal-pay-confirm').addEventListener('click', confirmPayInvoice);
 
   /* ── NAVEGAÇÃO DE MÊS ── */
   document.getElementById('btn-prev-month').addEventListener('click', async () => {
@@ -1696,6 +2029,9 @@
 
   /* ── KPIs ── */
   function updateKPIs(txs) {
+    /* is_ignored fora dos KPIs: pagamentos de fatura aparecem no extrato mas o
+       gasto já foi contado nas compras do cartão (contar de novo duplicaria) */
+    txs = txs.filter(t => !t.is_ignored);
     const income  = txs.filter(t => t.direction === 'income').reduce((s,t) => s + Number(t.amount), 0);
     const expense = txs.filter(t => t.direction === 'expense').reduce((s,t) => s + Number(t.amount), 0);
     const invest  = txs.filter(t => t.classification === 'Investimentos').reduce((s,t) => s + Number(t.amount), 0);
@@ -1770,10 +2106,10 @@
       const parts       = t.total_installments > 1 ? ` · ${t.installment_num}/${t.total_installments}` : '';
       const accName     = allAccounts.find(a => a.id === t.account_id)?.name || '—';
       return `
-        <tr data-id="${t.id}">
+        <tr data-id="${t.id}" class="${t.is_ignored ? 'tx-ignored' : ''}">
           <td class="td-date">${fmtDate(t.date)}</td>
           <td>
-            <div class="td-desc">${escHtml(t.description || '—')}</div>
+            <div class="td-desc">${escHtml(t.description || '—')}${t.is_ignored ? ' <span class="badge badge-slate" style="margin-left:6px">fora dos KPIs</span>' : ''}</div>
             ${t.establishment ? `<div class="td-desc-sub">${escHtml(t.establishment)}</div>` : ''}
           </td>
           <td style="font-size:.8125rem;color:var(--text-secondary)">${escHtml(accName)}</td>
@@ -1786,14 +2122,14 @@
           </td>
           <td>
             <div class="td-actions">
-              <button class="action-btn" title="Editar" onclick="openEditModal('${t.id}')">
+              ${t.is_ignored ? '' : `<button class="action-btn" title="Editar" onclick="openEditModal('${t.id}')">
                 <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
                      fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                 </svg>
-              </button>
-              <button class="action-btn delete" title="Excluir" onclick="openDeleteModal('${t.id}')">
+              </button>`}
+              <button class="action-btn delete" title="${t.is_ignored ? 'Excluir (desfaz o pagamento da fatura)' : 'Excluir'}" onclick="openDeleteModal('${t.id}')">
                 <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
                      fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="3 6 5 6 21 6"/>
@@ -2133,16 +2469,35 @@
     btn.classList.add('btn-loading'); btn.disabled = true;
     const wholeGroup = deletingGroupId && document.getElementById('delete-group-check').checked;
     const deletedTx = allTransactions.find(t => t.id === deletingId);
+
+    /* Se o lançamento é um pagamento de fatura, o registro em invoice_payments
+       precisa cair junto (senão a fatura continuaria constando como paga) */
+    let linkedPayments = [];
+    if (deletedTx?.is_ignored) {
+      const { data } = await _supabase.from('invoice_payments').select('*').eq('transaction_id', deletingId);
+      linkedPayments = data || [];
+    }
+
     const { error } = wholeGroup
       ? await _supabase.from('transactions').delete().eq('installment_group_id', deletingGroupId)
       : await _supabase.from('transactions').delete().eq('id', deletingId);
     btn.classList.remove('btn-loading'); btn.disabled = false;
     if (error) { toast('Erro ao excluir: ' + error.message, 'error'); return; }
-    toast(wholeGroup ? 'Todas as parcelas da compra foram excluídas.' : 'Lançamento excluído.', 'info');
+
+    if (linkedPayments.length > 0) {
+      await _supabase.from('invoice_payments').delete().eq('transaction_id', deletingId);
+      await loadCardFinanceData();
+      /* fatura que estava 'paid' e voltou a ter saldo → 'closed' de novo */
+      for (const p of linkedPayments) await reconcileInvoiceStatus(p.invoice_id);
+      renderInvoiceAlerts();
+      toast('Pagamento desfeito — a fatura voltou a constar em aberto.', 'info');
+    } else {
+      toast(wholeGroup ? 'Todas as parcelas da compra foram excluídas.' : 'Lançamento excluído.', 'info');
+    }
     closeModal('modal-delete');
     deletingId = null;
     deletingGroupId = null;
-    if (deletedTx?.credit_card_id) await loadCardFinanceData();
+    if (deletedTx?.credit_card_id) { await loadCardFinanceData(); renderInvoiceAlerts(); }
     await loadTransactions();
   });
 
