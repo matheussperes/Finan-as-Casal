@@ -728,6 +728,9 @@
         </svg>
       </button>
     </div>
+    <div id="tx-card-locked-note" style="display:none;background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 14px;font-size:.8125rem;color:var(--text-secondary);margin-bottom:16px">
+      💳 Compra no cartão: conta, cartão, data e parcelas não podem ser alterados. Para mudar, exclua e lance novamente.
+    </div>
     <div class="direction-toggle" style="margin-bottom:20px">
       <button class="direction-btn income active" data-dir="income" id="dir-income">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
@@ -751,6 +754,19 @@
           <option value="">Selecione a conta…</option>
         </select>
         <span class="form-error-text" id="tx-account-error">Selecione a conta de origem/destino do lançamento.</span>
+      </div>
+      <div class="form-group full" id="tx-card-group" style="display:none">
+        <label class="form-label">Pagamento</label>
+        <select class="input select" id="tx-card">
+          <option value="">À vista na conta</option>
+        </select>
+        <span class="form-hint" id="tx-card-hint" style="display:none"></span>
+      </div>
+      <div class="form-group full" id="tx-owner-group" style="display:none">
+        <label class="form-label">Quem gastou</label>
+        <select class="input select" id="tx-owner">
+          <option value="">Casal</option>
+        </select>
       </div>
       <div class="form-group full">
         <label class="form-label">Valor</label>
@@ -835,6 +851,10 @@
         <p style="font-weight:600;color:var(--text-primary);font-size:.9375rem;margin-bottom:6px" id="delete-desc-preview">Excluir este lançamento?</p>
         <p style="font-size:.875rem;color:var(--text-muted)">Essa ação não pode ser desfeita.</p>
       </div>
+      <label id="delete-group-wrap" style="display:none;align-items:center;gap:8px;font-size:.8125rem;color:var(--text-secondary);cursor:pointer;background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 14px">
+        <input type="checkbox" id="delete-group-check" style="accent-color:var(--emerald-500)" />
+        <span id="delete-group-label">Excluir todas as parcelas desta compra</span>
+      </label>
     </div>
     <div class="modal-footer" style="margin-top:0;padding-top:16px">
       <button class="btn btn-secondary" id="modal-delete-cancel">Cancelar</button>
@@ -978,12 +998,16 @@
   let allAccounts      = [];   // contas do household (com member_id)
   let allMembers        = [];  // membros do household
   let allCreditCards    = [];  // cartões de crédito do household
+  let allInvoices        = []; // faturas de todos os cartões do household
+  let allInvoicePayments = []; // pagamentos das faturas acima
+  let allCardTxs         = []; // TODAS as transações de cartão (qualquer mês) — p/ limite disponível
   let editingCardId     = null;
   let deletingCardId    = null;
   let activeTab          = 'mine'; // 'mine' | 'joint' | 'partner'
   let jointOwnerFilter    = 'all'; // 'all' | 'mine' | 'partner' | 'unset' — só usado dentro da aba joint
   let editingId       = null;
   let deletingId      = null;
+  let deletingGroupId = null;  // installment_group_id do lançamento em exclusão (se houver)
   let selectedDir     = 'income';
 
   const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
@@ -1184,14 +1208,66 @@
       allCreditCards = [];
     }
 
+    await loadCardFinanceData();
+
     renderTabs();
     renderJointOwnerFilter();
     populateAccountSelect();
     populateCardFormSelects();
+    populateTxOwnerSelect();
 
     updateMonthLabel();
     await loadTransactions();
   })();
+
+  /* ── DADOS FINANCEIROS DE CARTÃO (faturas, pagamentos, transações de cartão) ──
+     Carregados de todos os períodos (não só o mês visível) porque o limite
+     disponível depende de parcelas futuras já comprometidas. Queries separadas,
+     nunca join (regra do projeto — RLS pode falhar silenciosamente em joins). */
+  async function loadCardFinanceData() {
+    const cardIds = allCreditCards.map(c => c.id);
+    if (cardIds.length === 0) { allInvoices = []; allInvoicePayments = []; allCardTxs = []; return; }
+
+    const { data: invs, error: invErr } = await _supabase
+      .from('invoices').select('*')
+      .in('credit_card_id', cardIds)
+      .order('period', { ascending: true });
+    if (invErr) { toast('Erro ao carregar faturas: ' + invErr.message, 'error'); return; }
+    allInvoices = invs || [];
+
+    const invoiceIds = allInvoices.map(i => i.id);
+    const [payRes, ctxRes] = await Promise.all([
+      invoiceIds.length > 0
+        ? _supabase.from('invoice_payments').select('*').in('invoice_id', invoiceIds)
+        : Promise.resolve({ data: [] }),
+      _supabase.from('transactions').select('*')
+        .eq('household_id', householdId)
+        .not('credit_card_id', 'is', null),
+    ]);
+    allInvoicePayments = payRes.data || [];
+    allCardTxs = ctxRes.data || [];
+  }
+
+  /* Total da fatura é sempre CALCULADO da soma das transações (invoices.total_amount
+     só é persistido como snapshot no fechamento — nunca lido como fonte de verdade) */
+  function invoiceComputedTotal(invoiceId) {
+    return allCardTxs
+      .filter(t => t.invoice_id === invoiceId && t.direction === 'expense')
+      .reduce((s, t) => s + Number(t.amount), 0);
+  }
+  function invoicePaidSum(invoiceId) {
+    return allInvoicePayments
+      .filter(p => p.invoice_id === invoiceId)
+      .reduce((s, p) => s + Number(p.amount), 0);
+  }
+  /* Disponível = limite − (faturas não pagas − o que já foi pago delas).
+     Parcelas futuras já estão em faturas 'open' futuras, então entram naturalmente. */
+  function cardAvailableLimit(card) {
+    const committed = allInvoices
+      .filter(i => i.credit_card_id === card.id && i.status !== 'paid')
+      .reduce((s, i) => s + Math.max(0, invoiceComputedTotal(i.id) - invoicePaidSum(i.id)), 0);
+    return Number(card.credit_limit) - committed;
+  }
 
   /* ── NAVEGAÇÃO DE MÊS ── */
   document.getElementById('btn-prev-month').addEventListener('click', async () => {
@@ -1340,6 +1416,71 @@
     }).join('');
   }
 
+  /* ── CARTÃO NO MODAL DE LANÇAMENTO (Etapa 4) ── */
+  function populateTxOwnerSelect() {
+    const sel = document.getElementById('tx-owner');
+    sel.innerHTML = '<option value="">Casal</option>' + allMembers.map(m =>
+      `<option value="${m.id}">${escHtml(m.name)}</option>`
+    ).join('');
+  }
+
+  function accountCards(accountId) {
+    return allCreditCards.filter(c => c.account_id === accountId);
+  }
+
+  /* Mostra/esconde o seletor "À vista na conta / no cartão X" conforme
+     conta selecionada + direção. Cartão só existe para saídas. */
+  function refreshCardOptions() {
+    const cardGroup = document.getElementById('tx-card-group');
+    const cardSel   = document.getElementById('tx-card');
+    const accountId = document.getElementById('tx-account').value;
+    const cards     = accountId ? accountCards(accountId) : [];
+
+    if (editingId || selectedDir !== 'expense' || cards.length === 0) {
+      cardGroup.style.display = 'none';
+      cardSel.value = '';
+      onTxCardChange();
+      return;
+    }
+    cardGroup.style.display = '';
+    cardSel.innerHTML = '<option value="">À vista na conta</option>' + cards.map(c =>
+      `<option value="${c.id}">💳 ${escHtml(c.name)}</option>`
+    ).join('');
+    cardSel.value = '';
+    onTxCardChange();
+  }
+
+  function onTxCardChange() {
+    const cardId = document.getElementById('tx-card').value;
+    const card   = allCreditCards.find(c => c.id === cardId);
+    const ownerGroup   = document.getElementById('tx-owner-group');
+    const instGroup    = document.getElementById('installments-group');
+    const methodSel    = document.getElementById('tx-method');
+    const hint         = document.getElementById('tx-card-hint');
+
+    if (card) {
+      ownerGroup.style.display = '';
+      document.getElementById('tx-owner').value = card.default_owner_member_id || '';
+      instGroup.style.display = '';
+      document.getElementById('tx-installments').value = document.getElementById('tx-installments').value || 1;
+      methodSel.value = 'credito';
+      methodSel.disabled = true;
+      const avail = cardAvailableLimit(card);
+      hint.style.display = '';
+      hint.style.color = avail < 0 ? 'var(--color-expense)' : 'var(--text-muted)';
+      hint.textContent = `Limite disponível: ${fmtBRL(avail)} de ${fmtBRL(card.credit_limit)}`;
+    } else {
+      ownerGroup.style.display = 'none';
+      instGroup.style.display = 'none';
+      document.getElementById('tx-installments').value = 1;
+      methodSel.disabled = false;
+      if (!editingId && methodSel.value === 'credito') methodSel.value = 'pix';
+      hint.style.display = 'none';
+    }
+  }
+
+  document.getElementById('tx-card').addEventListener('change', onTxCardChange);
+
   /* ── GERENCIAR CARTÕES ── */
   function populateCardFormSelects() {
     const accSel = document.getElementById('card-account');
@@ -1372,7 +1513,10 @@
       const accName = acc?.name || '—';
       const owner = allMembers.find(m => m.id === card.default_owner_member_id);
       const ownerLabel = owner ? owner.name.split(' ')[0] : 'Casal';
-      const limitLabel = card.credit_limit != null ? fmtBRL(card.credit_limit) : '—';
+      const avail = cardAvailableLimit(card);
+      const limitLabel = card.credit_limit != null
+        ? `${fmtBRL(card.credit_limit)} (disp. ${fmtBRL(avail)})`
+        : '—';
       return `
         <div class="card-list-item" data-card-id="${card.id}">
           <div class="card-list-icon">
@@ -1533,6 +1677,9 @@
     toast('Cartão excluído.', 'info');
     closeModal('modal-card-delete');
     deletingCardId = null;
+    /* Faturas do cartão caem em cascata no banco — ressincroniza caches e extrato */
+    await loadCardFinanceData();
+    await loadTransactions();
     openCardsListModal();
   }
 
@@ -1616,8 +1763,11 @@
     tbody.innerHTML = filtered.map(t => {
       const isIncome    = t.direction === 'income';
       const catClass    = CAT_CLASS[t.classification] || 'neutra';
-      const methodLabel = METHOD_LABEL[t.payment_method] || t.payment_method || '—';
-      const parts       = t.total_installments > 1 ? ` · ${t.total_installments}x` : '';
+      const txCard      = t.credit_card_id ? allCreditCards.find(c => c.id === t.credit_card_id) : null;
+      const methodLabel = txCard
+        ? `💳 ${escHtml(txCard.name)}`
+        : (METHOD_LABEL[t.payment_method] || t.payment_method || '—');
+      const parts       = t.total_installments > 1 ? ` · ${t.installment_num}/${t.total_installments}` : '';
       const accName     = allAccounts.find(a => a.id === t.account_id)?.name || '—';
       return `
         <tr data-id="${t.id}">
@@ -1722,6 +1872,33 @@
     document.getElementById('tx-cat').value          = tx.classification || 'Despesas obrigatórias';
     document.getElementById('tx-method').value       = tx.payment_method || 'pix';
     document.getElementById('tx-installments').value = tx.total_installments || 1;
+
+    /* Compra no cartão: conta/cartão/data/parcelas travados — mudar qualquer um
+       exigiria realocar faturas; o caminho suportado é excluir e relançar */
+    const isCardTx = !!tx.credit_card_id;
+    document.getElementById('tx-card-locked-note').style.display = isCardTx ? '' : 'none';
+    document.getElementById('tx-account').disabled      = isCardTx;
+    document.getElementById('tx-date').disabled         = isCardTx;
+    document.getElementById('tx-installments').disabled = isCardTx;
+    document.getElementById('dir-income').disabled      = isCardTx;
+    document.getElementById('dir-expense').disabled     = isCardTx;
+    document.getElementById('tx-method').disabled       = isCardTx;
+
+    if (isCardTx) {
+      const card = allCreditCards.find(c => c.id === tx.credit_card_id);
+      const cardSel = document.getElementById('tx-card');
+      cardSel.innerHTML = `<option value="${tx.credit_card_id}">💳 ${escHtml(card?.name || 'Cartão')}</option>`;
+      cardSel.value = tx.credit_card_id;
+      cardSel.disabled = true;
+      document.getElementById('tx-card-group').style.display = '';
+      document.getElementById('tx-card-hint').style.display = 'none';
+      document.getElementById('tx-owner-group').style.display = '';
+      document.getElementById('tx-owner').value = tx.member_id || '';
+      document.getElementById('installments-group').style.display = tx.total_installments > 1 ? '' : 'none';
+    } else {
+      document.getElementById('tx-card').disabled = false;
+      refreshCardOptions(); // com editingId setado, esconde o grupo de cartão
+    }
     openModal('modal-tx');
   }
 
@@ -1740,6 +1917,11 @@
     document.getElementById('tx-cat').value          = 'Despesas obrigatórias';
     document.getElementById('tx-method').value       = 'pix';
     document.getElementById('tx-installments').value = 1;
+    // Destrava campos que a edição de compra no cartão pode ter desabilitado
+    document.getElementById('tx-card-locked-note').style.display = 'none';
+    ['tx-account','tx-date','tx-installments','tx-card','tx-method','dir-income','dir-expense']
+      .forEach(fid => { document.getElementById(fid).disabled = false; });
+    refreshCardOptions();
   }
 
   function clearAccountError() {
@@ -1747,7 +1929,10 @@
     document.getElementById('tx-account-error').classList.remove('show');
   }
 
-  document.getElementById('tx-account').addEventListener('change', clearAccountError);
+  document.getElementById('tx-account').addEventListener('change', () => {
+    clearAccountError();
+    refreshCardOptions();
+  });
 
   document.querySelectorAll('.direction-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1757,6 +1942,7 @@
       const catSel = document.getElementById('tx-cat');
       if (selectedDir === 'income' && catSel.value === 'Despesas obrigatórias') catSel.value = 'Renda';
       else if (selectedDir === 'expense' && catSel.value === 'Renda') catSel.value = 'Despesas obrigatórias';
+      refreshCardOptions();
     });
   });
 
@@ -1777,6 +1963,8 @@
     const place   = document.getElementById('tx-place').value.trim();
     const cat     = document.getElementById('tx-cat').value;
     const method  = document.getElementById('tx-method').value;
+    const cardId  = document.getElementById('tx-card-group').style.display !== 'none'
+      ? document.getElementById('tx-card').value : '';
 
     if (!accountId) {
       document.getElementById('tx-account').classList.add('has-error');
@@ -1791,33 +1979,129 @@
     const saveBtn = document.getElementById('modal-tx-save');
     saveBtn.classList.add('btn-loading');
     saveBtn.disabled = true;
+    const done = () => { saveBtn.classList.remove('btn-loading'); saveBtn.disabled = false; };
 
-    const payload = {
-      household_id:   householdId,
-      account_id:     accountId,
-      member_id:      deriveMemberIdFromAccount(accountId),
-      direction:      selectedDir,
-      amount,
-      description:    desc,
-      date,
-      establishment:  place || null,
-      classification: cat,
-      payment_method: method,
-    };
-
-    let error;
+    /* ── Edição ── */
     if (editingId) {
-      ({ error } = await _supabase.from('transactions').update(payload).eq('id', editingId));
-    } else {
-      ({ error } = await _supabase.from('transactions').insert(payload));
+      const editingTx = allTransactions.find(t => t.id === editingId);
+      let payload;
+      if (editingTx?.credit_card_id) {
+        /* Compra no cartão: só campos que não realocam fatura/parcela */
+        payload = {
+          amount,
+          description:    desc,
+          establishment:  place || null,
+          classification: cat,
+          member_id:      document.getElementById('tx-owner').value || null,
+        };
+      } else {
+        payload = {
+          household_id:   householdId,
+          account_id:     accountId,
+          member_id:      deriveMemberIdFromAccount(accountId),
+          direction:      selectedDir,
+          amount,
+          description:    desc,
+          date,
+          establishment:  place || null,
+          classification: cat,
+          payment_method: method,
+        };
+      }
+      const { error } = await _supabase.from('transactions').update(payload).eq('id', editingId);
+      done();
+      if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return; }
+      toast('Lançamento atualizado!', 'success');
+      closeModal('modal-tx');
+      if (editingTx?.credit_card_id) await loadCardFinanceData();
+      await loadTransactions();
+      return;
     }
 
-    saveBtn.classList.remove('btn-loading');
-    saveBtn.disabled = false;
+    /* ── Novo lançamento sem cartão (direto na conta) ── */
+    if (!cardId) {
+      const { error } = await _supabase.from('transactions').insert({
+        household_id:   householdId,
+        account_id:     accountId,
+        member_id:      deriveMemberIdFromAccount(accountId),
+        direction:      selectedDir,
+        amount,
+        description:    desc,
+        date,
+        establishment:  place || null,
+        classification: cat,
+        payment_method: method,
+      });
+      done();
+      if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return; }
+      toast('Lançamento registrado!', 'success');
+      closeModal('modal-tx');
+      await loadTransactions();
+      return;
+    }
 
+    /* ── Novo lançamento NO CARTÃO (Etapa 4): N parcelas, cada uma na fatura do seu mês ── */
+    const card = allCreditCards.find(c => c.id === cardId);
+    if (!card) { done(); toast('Cartão não encontrado — recarregue a página.', 'error'); return; }
+
+    let n = parseInt(document.getElementById('tx-installments').value, 10) || 1;
+    if (n < 1 || n > 72) { done(); toast('Parcelas: informe um número entre 1 e 72.', 'error'); return; }
+
+    const ownerMemberId = document.getElementById('tx-owner').value || null;
+    const basePeriod = computeInvoicePeriod(card.closing_day, date);
+    const periods = Array.from({ length: n }, (_, k) => addMonthsToPeriod(basePeriod, k));
+
+    let invoices;
+    try {
+      invoices = await getOrCreateInvoices(card, periods);
+    } catch (e) {
+      done(); toast(e.message, 'error'); return;
+    }
+    /* Compra retroativa não pode cair em fatura já fechada/paga */
+    const blocked = invoices.find(inv => inv && inv.status !== 'open');
+    if (blocked) {
+      done();
+      toast(`A fatura de ${periodLabel(blocked.period)} deste cartão já está ${blocked.status === 'paid' ? 'paga' : 'fechada'} — ajuste a data da compra.`, 'error');
+      return;
+    }
+    if (invoices.some(inv => !inv)) {
+      done(); toast('Não foi possível criar as faturas das parcelas. Tente novamente.', 'error'); return;
+    }
+
+    const amounts = splitInstallments(amount, n);
+    const groupId = n > 1 ? crypto.randomUUID() : null;
+    const [py, pmm, pd] = date.split('-').map(Number);
+
+    const rows = amounts.map((amt, k) => {
+      /* Parcela k aparece no extrato no mês da sua fatura: mesmo dia da compra, k meses depois (clampado) */
+      const base = new Date(py, pmm - 1 + k, 1);
+      const by = base.getFullYear(), bm = base.getMonth();
+      return {
+        household_id:         householdId,
+        account_id:           card.account_id,
+        credit_card_id:       card.id,
+        invoice_id:           invoices[k].id,
+        member_id:            ownerMemberId,
+        direction:            'expense',
+        amount:               amt,
+        date:                 k === 0 ? date : dateToISOParts(by, bm, clampDayToMonth(by, bm, pd)),
+        description:          desc,
+        establishment:        place || null,
+        classification:       cat,
+        payment_method:       'credito',
+        is_installment:       n > 1,
+        installment_num:      k + 1,
+        total_installments:   n,
+        installment_group_id: groupId,
+      };
+    });
+
+    const { error } = await _supabase.from('transactions').insert(rows);
+    done();
     if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return; }
-    toast(editingId ? 'Lançamento atualizado!' : 'Lançamento registrado!', 'success');
+    toast(n > 1 ? `Compra registrada em ${n}x no ${card.name}!` : `Compra registrada no ${card.name}!`, 'success');
     closeModal('modal-tx');
+    await loadCardFinanceData();
     await loadTransactions();
   }
 
@@ -1825,8 +2109,21 @@
   function openDeleteModal(id) {
     deletingId = id;
     const tx = allTransactions.find(t => t.id === id);
-    if (tx) document.getElementById('delete-desc-preview').textContent =
-      `"${tx.description || 'Lançamento'}" — ${fmtBRL(tx.amount)}`;
+    deletingGroupId = tx?.installment_group_id || null;
+    if (tx) {
+      const parcela = tx.total_installments > 1 ? ` (parcela ${tx.installment_num}/${tx.total_installments})` : '';
+      document.getElementById('delete-desc-preview').textContent =
+        `"${tx.description || 'Lançamento'}"${parcela} — ${fmtBRL(tx.amount)}`;
+    }
+    const wrap = document.getElementById('delete-group-wrap');
+    if (deletingGroupId) {
+      document.getElementById('delete-group-label').textContent =
+        `Excluir todas as ${tx.total_installments} parcelas desta compra`;
+      document.getElementById('delete-group-check').checked = false;
+      wrap.style.display = 'flex';
+    } else {
+      wrap.style.display = 'none';
+    }
     openModal('modal-delete');
   }
 
@@ -1834,12 +2131,18 @@
     if (!deletingId) return;
     const btn = document.getElementById('modal-delete-confirm');
     btn.classList.add('btn-loading'); btn.disabled = true;
-    const { error } = await _supabase.from('transactions').delete().eq('id', deletingId);
+    const wholeGroup = deletingGroupId && document.getElementById('delete-group-check').checked;
+    const deletedTx = allTransactions.find(t => t.id === deletingId);
+    const { error } = wholeGroup
+      ? await _supabase.from('transactions').delete().eq('installment_group_id', deletingGroupId)
+      : await _supabase.from('transactions').delete().eq('id', deletingId);
     btn.classList.remove('btn-loading'); btn.disabled = false;
     if (error) { toast('Erro ao excluir: ' + error.message, 'error'); return; }
-    toast('Lançamento excluído.', 'info');
+    toast(wholeGroup ? 'Todas as parcelas da compra foram excluídas.' : 'Lançamento excluído.', 'info');
     closeModal('modal-delete');
     deletingId = null;
+    deletingGroupId = null;
+    if (deletedTx?.credit_card_id) await loadCardFinanceData();
     await loadTransactions();
   });
 
