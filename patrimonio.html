@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Finanças do Casal — Patrimônio</title>
+  <link rel="stylesheet" href="globals.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .page-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .page-title-block h1 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      line-height: 1.2;
+    }
+    .page-title-block p {
+      font-size: .875rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .tabs-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--surface-alt);
+      border-radius: var(--radius-lg);
+      padding: 4px;
+      margin-bottom: 20px;
+      width: fit-content;
+    }
+    .tab-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 16px;
+      border-radius: var(--radius-md);
+      font-size: .8125rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active {
+      background: var(--surface);
+      color: var(--text-primary);
+      box-shadow: 0 1px 2px rgba(0,0,0,.06);
+    }
+    .tab-btn .tab-count {
+      font-size: .6875rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: var(--radius-full);
+      background: var(--border);
+      color: var(--text-muted);
+    }
+    .tab-btn.active .tab-count {
+      background: var(--emerald-100);
+      color: var(--emerald-700);
+    }
+    .kpi-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .kpi-card-v2 {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 20px 18px;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-card-v2::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+    .kpi-card-v2.balance::before { background: var(--color-info); }
+    .kpi-card-v2.invoice::before { background: var(--color-warning); }
+    .kpi-card-v2.limit::before   { background: var(--color-income); }
+    .kpi-card-v2.income::before  { background: var(--color-income); }
+    .kpi-card-v2.expense::before { background: var(--color-expense); }
+    .kpi-label-v2 {
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: 6px;
+    }
+    .kpi-value-v2 {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+    .kpi-card-v2.income  .kpi-value-v2 { color: var(--color-income); }
+    .kpi-card-v2.expense .kpi-value-v2 { color: var(--color-expense); }
+    .kpi-sub { font-size: .75rem; color: var(--text-muted); margin-top: 6px; }
+    .accounts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+    }
+    .account-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      cursor: pointer;
+      transition: all var(--transition);
+      text-align: left;
+      width: 100%;
+    }
+    .account-card:hover {
+      border-color: var(--emerald-500);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, .08);
+      transform: translateY(-1px);
+    }
+    .account-card-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .account-emoji {
+      width: 42px; height: 42px;
+      border-radius: var(--radius-md);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.25rem;
+      flex-shrink: 0;
+    }
+    .account-name { font-weight: 700; font-size: .9375rem; color: var(--text-primary); }
+    .account-sub  { font-size: .75rem; color: var(--text-muted); margin-top: 2px; }
+    .account-balance-label { font-size: .6875rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+    .account-balance {
+      font-family: var(--font-display);
+      font-size: 1.375rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin-top: 2px;
+    }
+    .account-balance.negative { color: var(--color-expense); }
+    .account-cards-list { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+    .account-cc-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: .75rem;
+      color: var(--text-secondary);
+      padding: 5px 0;
+    }
+    .account-cc-row .cc-name { font-weight: 600; color: var(--text-primary); }
+    .account-cc-row .cc-alert { color: var(--color-expense); font-weight: 600; }
+    .empty-block {
+      text-align: center;
+      padding: 60px 24px;
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-lg);
+      color: var(--text-muted);
+      font-size: .875rem;
+    }
+    /* ── Detalhe da conta ── */
+    .detail-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .btn-back {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      font-size: .8125rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      transition: all var(--transition);
+    }
+    .btn-back:hover { border-color: var(--border-focus); color: var(--text-primary); }
+    .month-nav {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 4px;
+      margin-left: auto;
+    }
+    .month-nav-btn {
+      width: 34px; height: 34px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: var(--radius-md);
+      color: var(--text-muted);
+      transition: all var(--transition);
+    }
+    .month-nav-btn:hover { background: var(--surface-alt); color: var(--text-primary); }
+    .month-nav-label {
+      font-family: var(--font-display);
+      font-size: .875rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      padding: 0 10px;
+      min-width: 140px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .cc-widgets {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .cc-widget {
+      background: linear-gradient(135deg, var(--slate-900), var(--slate-800));
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      color: white;
+    }
+    .cc-widget .ccw-name { font-weight: 700; font-size: .9375rem; display: flex; align-items: center; gap: 8px; }
+    .cc-widget .ccw-row { display: flex; justify-content: space-between; font-size: .75rem; margin-top: 10px; color: rgba(255,255,255,.75); }
+    .cc-widget .ccw-row strong { color: white; font-family: var(--font-display); }
+    .cc-widget .ccw-bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,.15); margin-top: 12px; overflow: hidden; }
+    .cc-widget .ccw-bar-fill { height: 100%; border-radius: 3px; background: var(--emerald-400); transition: width .4s; }
+    .cc-widget .ccw-bar-fill.warn { background: #fbbf24; }
+    .cc-widget .ccw-bar-fill.over { background: #fb7185; }
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .table-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .table-count { font-size: .8125rem; color: var(--text-muted); font-weight: 500; }
+    .table-count strong { color: var(--text-primary); font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      padding: 10px 16px;
+      text-align: left;
+      font-size: .6875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-muted);
+      background: var(--surface-alt);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    thead th:last-child { text-align: right; }
+    tbody tr { border-bottom: 1px solid var(--border); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody td { padding: 13px 16px; font-size: .875rem; color: var(--text-secondary); vertical-align: middle; }
+    tbody td:last-child { text-align: right; }
+    tbody tr.tx-ignored td { opacity: .55; }
+    .td-date { font-size: .8125rem; color: var(--text-muted); white-space: nowrap; }
+    .td-desc { font-weight: 500; color: var(--text-primary); }
+    .td-desc-sub { font-size: .75rem; color: var(--text-muted); margin-top: 2px; }
+    .td-amount { font-family: var(--font-display); font-size: .9375rem; font-weight: 700; white-space: nowrap; }
+    .td-amount.income  { color: var(--color-income); }
+    .td-amount.expense { color: var(--color-expense); }
+    .empty-table { padding: 48px 24px; text-align: center; color: var(--text-muted); font-size: .875rem; }
+    .skeleton-row td { padding: 14px 16px; }
+    .sk { height: 14px; border-radius: var(--radius-sm); }
+    .mobile-menu-btn {
+      display: none;
+      width: 40px; height: 40px;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-md);
+      color: var(--text-secondary);
+      transition: all var(--transition);
+    }
+    .mobile-menu-btn:hover { background: var(--surface-alt); }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 99; }
+    .sidebar-overlay.open { display: block; }
+    @media (max-width: 1024px) { .kpi-grid-3 { grid-template-columns: 1fr; } }
+    @media (max-width: 768px) {
+      .mobile-menu-btn { display: flex; }
+      .accounts-grid { grid-template-columns: 1fr; }
+      .detail-header { gap: 10px; }
+      .month-nav { margin-left: 0; }
+      table { display: block; overflow-x: auto; }
+    }
+    @media (max-width: 480px) {
+      .tabs-bar { width: 100%; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-layout">
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-dot">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+               fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        Finanças do Casal
+      </div>
+    </div>
+    <div class="sidebar-couple">
+      <div class="couple-label">Casal</div>
+      <div class="couple-names" id="sidebar-couple-name">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+        </svg>
+        <span id="couple-name-text">Carregando…</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Controle</div>
+      <a href="lancamentos.html" class="nav-item">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+        </span>
+        Lançamentos
+      </a>
+      <a href="patrimonio.html" class="nav-item active">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+            <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+            <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>
+          </svg>
+        </span>
+        Patrimônio
+      </a>
+      <a href="plano.html" class="nav-item">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6"  y1="20" x2="6"  y2="14"/>
+          </svg>
+        </span>
+        Plano / Orçamento
+      </a>
+      <div class="nav-section-label">Futuro</div>
+      <a href="projetos.html" class="nav-item">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </span>
+        Projetos
+      </a>
+      <a href="futuro.html" class="nav-item">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+        </span>
+        Independência Financeira
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="config.html" class="nav-item" style="margin-bottom:4px">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </span>
+        Configurações
+      </a>
+      <button class="nav-item" id="btn-logout" style="width:100%;border:none;cursor:pointer">
+        <span class="nav-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </span>
+        Sair
+      </button>
+    </div>
+  </aside>
+
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <main class="main-content">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="mobile-menu-btn" id="mobile-menu-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6"  x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <span class="topbar-title">Patrimônio</span>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- ═══ VISÃO GERAL ═══ -->
+      <div id="overview-view">
+        <div class="page-header">
+          <div class="page-title-block">
+            <h1>Patrimônio</h1>
+            <p>Contas e cartões do casal — saldos, limites e faturas</p>
+          </div>
+        </div>
+
+        <div class="tabs-bar" id="tabs-bar"></div>
+
+        <div class="kpi-grid-3">
+          <div class="kpi-card-v2 balance">
+            <div class="kpi-label-v2">Saldo em contas</div>
+            <div class="kpi-value-v2" id="kpi-total-balance"><div class="skeleton sk" style="width:110px;height:24px"></div></div>
+            <div class="kpi-sub" id="kpi-total-balance-sub">&nbsp;</div>
+          </div>
+          <div class="kpi-card-v2 invoice">
+            <div class="kpi-label-v2">Faturas em aberto</div>
+            <div class="kpi-value-v2" id="kpi-open-invoices"><div class="skeleton sk" style="width:110px;height:24px"></div></div>
+            <div class="kpi-sub" id="kpi-open-invoices-sub">&nbsp;</div>
+          </div>
+          <div class="kpi-card-v2 limit">
+            <div class="kpi-label-v2">Limite disponível</div>
+            <div class="kpi-value-v2" id="kpi-avail-limit"><div class="skeleton sk" style="width:110px;height:24px"></div></div>
+            <div class="kpi-sub" id="kpi-avail-limit-sub">&nbsp;</div>
+          </div>
+        </div>
+
+        <div class="accounts-grid" id="accounts-grid"></div>
+        <div class="empty-block" id="overview-empty" style="display:none"></div>
+      </div>
+
+      <!-- ═══ DETALHE DA CONTA ═══ -->
+      <div id="detail-view" style="display:none">
+        <div class="detail-header">
+          <button class="btn-back" id="btn-back">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m15 18-6-6 6-6"/>
+            </svg>
+            Voltar
+          </button>
+          <div>
+            <h1 style="font-size:1.25rem;font-weight:800;color:var(--text-primary)" id="detail-name">—</h1>
+            <p style="font-size:.8125rem;color:var(--text-muted)" id="detail-sub">—</p>
+          </div>
+          <div class="month-nav">
+            <button class="month-nav-btn" id="btn-prev-month">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                   fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m15 18-6-6 6-6"/>
+              </svg>
+            </button>
+            <span class="month-nav-label" id="month-label">—</span>
+            <button class="month-nav-btn" id="btn-next-month">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                   fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m9 18 6-6-6-6"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="kpi-grid-3">
+          <div class="kpi-card-v2 balance">
+            <div class="kpi-label-v2">Saldo atual da conta</div>
+            <div class="kpi-value-v2" id="detail-balance">—</div>
+            <div class="kpi-sub" id="detail-balance-sub">&nbsp;</div>
+          </div>
+          <div class="kpi-card-v2 income">
+            <div class="kpi-label-v2">Entradas no mês</div>
+            <div class="kpi-value-v2" id="detail-income">—</div>
+            <div class="kpi-sub">movimentação real da conta</div>
+          </div>
+          <div class="kpi-card-v2 expense">
+            <div class="kpi-label-v2">Saídas no mês</div>
+            <div class="kpi-value-v2" id="detail-expense">—</div>
+            <div class="kpi-sub">sem compras no cartão (saem no pagamento da fatura)</div>
+          </div>
+        </div>
+
+        <div class="cc-widgets" id="detail-cards"></div>
+
+        <div class="table-card">
+          <div class="table-header-row">
+            <span class="table-count" id="detail-count">—</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width:90px">Data</th>
+                <th>Descrição</th>
+                <th style="width:160px">Pagamento</th>
+                <th style="width:130px;text-align:right">Valor</th>
+              </tr>
+            </thead>
+            <tbody id="detail-tbody"></tbody>
+          </table>
+          <div id="detail-empty" class="empty-table" style="display:none">
+            Nenhum lançamento nesta conta neste mês.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+  const SUPABASE_URL  = 'https://vvgrnrvvdggosxkjkxaa.supabase.co';
+  const SUPABASE_ANON = 'sb_publishable_XbWPcxUBV-2R2eH720h7kA_v5zCrvoX';
+  const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+  let currentUser        = null;
+  let householdId        = null;
+  let myMemberId         = null;
+  let partnerMemberId    = null;
+  let allMembers         = [];
+  let allAccounts        = [];
+  let allCreditCards     = [];
+  let allInvoices        = [];
+  let allInvoicePayments = [];
+  let allTx              = []; // TODAS as transações do household (saldo é acumulado desde o início)
+  let activeTab          = 'mine';   // 'mine' | 'partner' | 'joint'
+  let detailAccountId    = null;
+  /* Normalizado para o dia 1: setMonth() em dia 29-31 pularia meses */
+  let detailDate         = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+  const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+  const ACC_TYPE_META = {
+    checking:   { emoji:'🏦', label:'Conta corrente', bg:'#eff6ff' },
+    savings:    { emoji:'🐷', label:'Poupança',       bg:'#ecfdf5' },
+    investment: { emoji:'📈', label:'Investimentos',  bg:'#f5f3ff' },
+  };
+
+  const METHOD_LABEL = {
+    pix:'Pix',debito:'Débito',credito:'Crédito',
+    dinheiro:'Dinheiro',ted:'TED / DOC',boleto:'Boleto',outro:'Outro',
+  };
+
+  /* ── Lógica de fatura (mesmas funções puras do lancamentos.html / Etapa 3) ── */
+  function lastDayOfMonth(y, mIdx) { return new Date(y, mIdx + 1, 0).getDate(); }
+  function clampDayToMonth(y, mIdx, day) { return Math.min(day, lastDayOfMonth(y, mIdx)); }
+  function periodToParts(period) {
+    const [y, m] = period.split('-').map(Number);
+    return { y, mIdx: m - 1 };
+  }
+  function partsToPeriod(y, mIdx) {
+    const d = new Date(y, mIdx, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  function periodLabel(period) {
+    const { y, mIdx } = periodToParts(period);
+    return `${MONTHS[mIdx]} ${y}`;
+  }
+  function computeInvoicePeriod(closingDay, purchaseDateISO) {
+    const [y, m, d] = purchaseDateISO.split('-').map(Number);
+    const mIdx = m - 1;
+    const effectiveClosing = clampDayToMonth(y, mIdx, closingDay);
+    return d < effectiveClosing ? partsToPeriod(y, mIdx) : partsToPeriod(y, mIdx + 1);
+  }
+
+  function invoiceComputedTotal(invoiceId) {
+    return allTx
+      .filter(t => t.invoice_id === invoiceId && t.direction === 'expense')
+      .reduce((s, t) => s + Number(t.amount), 0);
+  }
+  function invoicePaidSum(invoiceId) {
+    return allInvoicePayments
+      .filter(p => p.invoice_id === invoiceId)
+      .reduce((s, p) => s + Number(p.amount), 0);
+  }
+  function cardAvailableLimit(card) {
+    const committed = allInvoices
+      .filter(i => i.credit_card_id === card.id && i.status !== 'paid')
+      .reduce((s, i) => s + Math.max(0, invoiceComputedTotal(i.id) - invoicePaidSum(i.id)), 0);
+    return Number(card.credit_limit) - committed;
+  }
+  /* Fatura "atual" = a que está acumulando compras feitas hoje */
+  function cardCurrentInvoiceTotal(card) {
+    const period = computeInvoicePeriod(card.closing_day, todayISO());
+    const inv = allInvoices.find(i => i.credit_card_id === card.id && i.period === period);
+    return inv ? invoiceComputedTotal(inv.id) : 0;
+  }
+  function cardUnpaidClosed(card) {
+    return allInvoices
+      .filter(i => i.credit_card_id === card.id && i.status === 'closed')
+      .reduce((s, i) => s + Math.max(0, invoiceComputedTotal(i.id) - invoicePaidSum(i.id)), 0);
+  }
+
+  /* ── Saldo atual da conta (regra decidida em 17/06 + contabilização de cartão) ──
+     saldo = accounts.balance (inicial) + soma das transações da conta,
+     EXCLUINDO compras no cartão (o dinheiro só sai da conta no pagamento
+     da fatura, que é um lançamento próprio, sem credit_card_id). */
+  function accountCurrentBalance(acc) {
+    const delta = allTx
+      .filter(t => t.account_id === acc.id && !t.credit_card_id)
+      .reduce((s, t) => s + (t.direction === 'income' ? 1 : -1) * Number(t.amount), 0);
+    return Number(acc.balance || 0) + delta;
+  }
+
+  /* ── INIT ── */
+  (async () => {
+    const { data: { session } } = await _supabase.auth.getSession();
+    if (!session) { window.location.href = 'index.html'; return; }
+    currentUser = session.user;
+
+    const { data: member } = await _supabase
+      .from('members')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+    if (!member?.household_id) { window.location.href = 'onboarding.html'; return; }
+    householdId = member.household_id;
+    myMemberId  = member.id;
+
+    /* Queries separadas, nunca join (regra do projeto — RLS silencioso) */
+    const [hhRes, membersRes, accountsRes, txRes] = await Promise.all([
+      _supabase.from('households').select('name').eq('id', householdId).maybeSingle(),
+      _supabase.from('members').select('*').eq('household_id', householdId),
+      _supabase.from('accounts').select('*').eq('household_id', householdId).order('created_at', { ascending: true }),
+      _supabase.from('transactions').select('*').eq('household_id', householdId),
+    ]);
+    document.getElementById('couple-name-text').textContent = hhRes.data?.name || 'Nosso Casal';
+    allMembers  = membersRes.data || [];
+    allAccounts = accountsRes.data || [];
+    allTx       = txRes.data || [];
+    partnerMemberId = allMembers.find(m => m.id !== myMemberId)?.id || null;
+
+    const accountIds = allAccounts.map(a => a.id);
+    if (accountIds.length > 0) {
+      const { data: cards } = await _supabase
+        .from('credit_cards').select('*')
+        .in('account_id', accountIds)
+        .order('created_at', { ascending: true });
+      allCreditCards = cards || [];
+    }
+    const cardIds = allCreditCards.map(c => c.id);
+    if (cardIds.length > 0) {
+      const { data: invs } = await _supabase
+        .from('invoices').select('*')
+        .in('credit_card_id', cardIds);
+      allInvoices = invs || [];
+    }
+    const invoiceIds = allInvoices.map(i => i.id);
+    if (invoiceIds.length > 0) {
+      const { data: pays } = await _supabase
+        .from('invoice_payments').select('*')
+        .in('invoice_id', invoiceIds);
+      allInvoicePayments = pays || [];
+    }
+
+    renderTabs();
+    renderOverview();
+  })();
+
+  /* ── ABAS (ordem: quem logou primeiro → parceiro → conjuntas) ── */
+  function accountBucket(acc) {
+    if (acc.owner_type === 'joint') return 'joint';
+    if (acc.member_id === myMemberId) return 'mine';
+    if (acc.member_id === partnerMemberId) return 'partner';
+    return null;
+  }
+
+  function renderTabs() {
+    const partner = allMembers.find(m => m.id === partnerMemberId);
+    const count = key => allAccounts.filter(a => accountBucket(a) === key).length;
+    const tabs = [
+      { key: 'mine',    label: 'Minhas',  icon: '👤' },
+      { key: 'partner', label: partner?.name ? `De ${partner.name.split(' ')[0]}` : 'Do parceiro', icon: '👥' },
+      { key: 'joint',   label: 'Conjuntas', icon: '🤝' },
+    ];
+    document.getElementById('tabs-bar').innerHTML = tabs.map(t => `
+      <button class="tab-btn ${activeTab === t.key ? 'active' : ''}" onclick="switchTab('${t.key}')">
+        <span>${t.icon}</span> ${escHtml(t.label)} <span class="tab-count">${count(t.key)}</span>
+      </button>
+    `).join('');
+  }
+
+  function switchTab(key) {
+    activeTab = key;
+    renderTabs();
+    renderOverview();
+  }
+
+  /* ── VISÃO GERAL ── */
+  function renderOverview() {
+    const accounts = allAccounts.filter(a => accountBucket(a) === activeTab);
+    const cardsOfTab = allCreditCards.filter(c => accounts.some(a => a.id === c.account_id));
+
+    const totalBalance = accounts.reduce((s, a) => s + accountCurrentBalance(a), 0);
+    const openInvoices = cardsOfTab.reduce((s, c) => s + allInvoices
+      .filter(i => i.credit_card_id === c.id && i.status !== 'paid')
+      .reduce((ss, i) => ss + Math.max(0, invoiceComputedTotal(i.id) - invoicePaidSum(i.id)), 0), 0);
+    const availLimit = cardsOfTab.reduce((s, c) => s + cardAvailableLimit(c), 0);
+    const totalLimit = cardsOfTab.reduce((s, c) => s + Number(c.credit_limit || 0), 0);
+
+    document.getElementById('kpi-total-balance').textContent = fmtBRL(totalBalance);
+    document.getElementById('kpi-total-balance-sub').textContent =
+      `${accounts.length} conta${accounts.length !== 1 ? 's' : ''}`;
+    document.getElementById('kpi-open-invoices').textContent = fmtBRL(openInvoices);
+    document.getElementById('kpi-open-invoices-sub').textContent =
+      `${cardsOfTab.length} cartã${cardsOfTab.length !== 1 ? 'es' : 'o'} · inclui parcelas futuras`;
+    document.getElementById('kpi-avail-limit').textContent = fmtBRL(availLimit);
+    document.getElementById('kpi-avail-limit-sub').textContent =
+      totalLimit > 0 ? `de ${fmtBRL(totalLimit)} no total` : 'nenhum cartão nesta aba';
+
+    const grid  = document.getElementById('accounts-grid');
+    const empty = document.getElementById('overview-empty');
+    if (accounts.length === 0) {
+      grid.innerHTML = '';
+      empty.style.display = 'block';
+      empty.textContent = activeTab === 'joint'
+        ? 'Nenhuma conta conjunta cadastrada. Crie contas em Configurações → Contas bancárias.'
+        : 'Nenhuma conta individual nesta aba. Vincule contas a um titular em Configurações → Contas bancárias.';
+      return;
+    }
+    empty.style.display = 'none';
+    grid.innerHTML = accounts.map(acc => {
+      const meta = ACC_TYPE_META[acc.account_type] || ACC_TYPE_META['checking'];
+      const owner = allMembers.find(m => m.id === acc.member_id);
+      const ownerLabel = acc.owner_type === 'joint' ? 'Conjunta' : (owner?.name?.split(' ')[0] || 'Individual');
+      const balance = accountCurrentBalance(acc);
+      const cards = allCreditCards.filter(c => c.account_id === acc.id);
+      const cardsHtml = cards.length === 0 ? '' : `
+        <div class="account-cards-list">
+          ${cards.map(c => {
+            const unpaidClosed = cardUnpaidClosed(c);
+            return `
+              <div class="account-cc-row">
+                <span class="cc-name">💳 ${escHtml(c.name)}</span>
+                <span>
+                  Fatura ${fmtBRL(cardCurrentInvoiceTotal(c))} · Disp. ${fmtBRL(cardAvailableLimit(c))}
+                  ${unpaidClosed > 0.004 ? `<span class="cc-alert"> · ${fmtBRL(unpaidClosed)} a pagar</span>` : ''}
+                </span>
+              </div>`;
+          }).join('')}
+        </div>`;
+      return `
+        <button class="account-card" onclick="openDetail('${acc.id}')">
+          <div class="account-card-head">
+            <div class="account-emoji" style="background:${meta.bg}">${meta.emoji}</div>
+            <div>
+              <div class="account-name">${escHtml(acc.name)}</div>
+              <div class="account-sub">${meta.label} · ${escHtml(ownerLabel)}</div>
+            </div>
+          </div>
+          <div class="account-balance-label">Saldo atual</div>
+          <div class="account-balance ${balance < 0 ? 'negative' : ''}">${fmtBRL(balance)}</div>
+          ${cardsHtml}
+        </button>`;
+    }).join('');
+  }
+
+  /* ── DETALHE DA CONTA ── */
+  function openDetail(accountId) {
+    detailAccountId = accountId;
+    detailDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    document.getElementById('overview-view').style.display = 'none';
+    document.getElementById('detail-view').style.display = '';
+    renderDetail();
+  }
+
+  document.getElementById('btn-back').addEventListener('click', () => {
+    detailAccountId = null;
+    document.getElementById('detail-view').style.display = 'none';
+    document.getElementById('overview-view').style.display = '';
+    renderOverview();
+  });
+
+  document.getElementById('btn-prev-month').addEventListener('click', () => {
+    detailDate.setMonth(detailDate.getMonth() - 1);
+    renderDetail();
+  });
+  document.getElementById('btn-next-month').addEventListener('click', () => {
+    detailDate.setMonth(detailDate.getMonth() + 1);
+    renderDetail();
+  });
+
+  function renderDetail() {
+    const acc = allAccounts.find(a => a.id === detailAccountId);
+    if (!acc) return;
+    const meta = ACC_TYPE_META[acc.account_type] || ACC_TYPE_META['checking'];
+    const owner = allMembers.find(m => m.id === acc.member_id);
+    const ownerLabel = acc.owner_type === 'joint' ? 'Conjunta' : (owner?.name?.split(' ')[0] || 'Individual');
+
+    document.getElementById('detail-name').textContent = acc.name;
+    document.getElementById('detail-sub').textContent = `${meta.label} · ${ownerLabel}`;
+    document.getElementById('month-label').textContent =
+      `${MONTHS[detailDate.getMonth()]} ${detailDate.getFullYear()}`;
+
+    document.getElementById('detail-balance').textContent = fmtBRL(accountCurrentBalance(acc));
+    document.getElementById('detail-balance-sub').textContent =
+      `saldo inicial ${fmtBRL(acc.balance || 0)} + movimentações`;
+
+    /* Mês visível */
+    const y = detailDate.getFullYear();
+    const m = detailDate.getMonth();
+    const from = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    const to = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDayOfMonth(y, m)).padStart(2, '0')}`;
+    const monthTx = allTx
+      .filter(t => t.account_id === acc.id && t.date >= from && t.date <= to)
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    /* KPIs de movimentação real: sem compras de cartão (saem no pagamento da fatura) */
+    const moneyTx = monthTx.filter(t => !t.credit_card_id);
+    const income  = moneyTx.filter(t => t.direction === 'income').reduce((s, t) => s + Number(t.amount), 0);
+    const expense = moneyTx.filter(t => t.direction === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+    document.getElementById('detail-income').textContent  = fmtBRL(income);
+    document.getElementById('detail-expense').textContent = fmtBRL(expense);
+
+    /* Cartões vinculados à conta */
+    const cards = allCreditCards.filter(c => c.account_id === acc.id);
+    document.getElementById('detail-cards').innerHTML = cards.map(c => {
+      const limit = Number(c.credit_limit || 0);
+      const avail = cardAvailableLimit(c);
+      const used = limit - avail;
+      const pct = limit > 0 ? Math.min(100, Math.max(0, (used / limit) * 100)) : 0;
+      const barClass = pct >= 100 ? 'over' : (pct >= 75 ? 'warn' : '');
+      const unpaidClosed = cardUnpaidClosed(c);
+      return `
+        <div class="cc-widget">
+          <div class="ccw-name">💳 ${escHtml(c.name)}</div>
+          <div class="ccw-row"><span>Fatura atual</span><strong>${fmtBRL(cardCurrentInvoiceTotal(c))}</strong></div>
+          ${unpaidClosed > 0.004 ? `<div class="ccw-row"><span>Fechada a pagar</span><strong style="color:#fb7185">${fmtBRL(unpaidClosed)}</strong></div>` : ''}
+          <div class="ccw-row"><span>Disponível</span><strong>${fmtBRL(avail)}</strong></div>
+          <div class="ccw-row"><span>Limite</span><strong>${fmtBRL(limit)}</strong></div>
+          <div class="ccw-bar"><div class="ccw-bar-fill ${barClass}" style="width:${pct}%"></div></div>
+          <div class="ccw-row" style="margin-top:8px"><span>Fecha dia ${c.closing_day} · vence dia ${c.due_day}</span></div>
+        </div>`;
+    }).join('');
+
+    /* Tabela do mês */
+    const tbody = document.getElementById('detail-tbody');
+    const empty = document.getElementById('detail-empty');
+    document.getElementById('detail-count').innerHTML =
+      `<strong>${monthTx.length}</strong> lançamento${monthTx.length !== 1 ? 's' : ''} nesta conta`;
+    if (monthTx.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    tbody.innerHTML = monthTx.map(t => {
+      const isIncome = t.direction === 'income';
+      const txCard = t.credit_card_id ? allCreditCards.find(c => c.id === t.credit_card_id) : null;
+      const payLabel = txCard
+        ? `💳 ${escHtml(txCard.name)}${t.total_installments > 1 ? ` · ${t.installment_num}/${t.total_installments}` : ''}`
+        : (METHOD_LABEL[t.payment_method] || t.payment_method || '—');
+      return `
+        <tr class="${t.is_ignored ? 'tx-ignored' : ''}">
+          <td class="td-date">${fmtDate(t.date)}</td>
+          <td>
+            <div class="td-desc">${escHtml(t.description || '—')}${t.is_ignored ? ' <span class="badge badge-slate" style="margin-left:6px">fora dos KPIs</span>' : ''}</div>
+            ${t.establishment ? `<div class="td-desc-sub">${escHtml(t.establishment)}</div>` : ''}
+          </td>
+          <td style="font-size:.8125rem;color:var(--text-muted)">${payLabel}</td>
+          <td>
+            <span class="td-amount ${isIncome ? 'income' : 'expense'}">
+              ${isIncome ? '+' : '−'} ${fmtBRL(t.amount)}
+            </span>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  /* ── SIDEBAR MOBILE / LOGOUT ── */
+  document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('open');
+  });
+  document.getElementById('sidebar-overlay').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('open');
+  });
+  document.getElementById('btn-logout').addEventListener('click', async () => {
+    await _supabase.auth.signOut();
+    window.location.href = 'index.html';
+  });
+
+  /* ── FORMATADORES / TOAST ── */
+  function fmtBRL(val) {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
+  }
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  function todayISO() {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  }
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  }
+  function toast(msg, type = 'success') {
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.innerHTML = `<span>${msg}</span>`;
+    document.getElementById('toast-container').appendChild(el);
+    setTimeout(() => { el.classList.add('exit'); el.addEventListener('animationend', () => el.remove()); }, 4000);
+  }
+</script>
+</body>
+</html>
