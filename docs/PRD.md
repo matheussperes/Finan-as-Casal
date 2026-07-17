@@ -1,0 +1,207 @@
+# PRD — Painel Finanças do Casal
+
+**Versão:** 1.1 (final — decisões aprovadas)
+**Objetivo do ciclo:** deixar o produto pronto para ir ao mercado, com modelo financeiro consistente, visão de patrimônio consolidada, planejamento de projetos de vida e importação automática de extratos.
+**Executor previsto:** Claude Code, sprint por sprint.
+**Stack de referência:** front vanilla/HTML-CSS-JS, Supabase (banco + auth), Vercel (deploy), GitHub (versionamento).
+
+---
+
+## Como ler este documento
+
+- Cada requisito tem um **ID** (ex: `LAN-01`) para referência direta em código, commit e PR.
+- Status: 🆕 Novo · 🔧 Ajuste · ❌ Remoção · ✅ Já está bom (não mexer).
+- A seção 2 traz as **decisões arquiteturais aprovadas** — são regra, não sugestão.
+- A seção 7 é a **ordem de execução**. Nada num sprint depende de algo que ainda não foi entregue.
+
+---
+
+## 1. Visão geral das mudanças
+
+| Módulo | O que muda | Sprint |
+|--------|-----------|--------|
+| Lançamentos | Botão duplo, filtros em linha, modal do cartão, ticket de fatura clicável, importação OFX/CSV | 1, 4, 7 |
+| Patrimônio | 3 cards (Financeiro / Bens / Dívidas) + telas de detalhe de conta, cartão e investimento | 3, 4 |
+| Plano & Orçamento | Categorias editáveis, reserva de emergência vinculada, modelo de investimento dentro da conta | 2 |
+| Projetos | Fusão com "eventos patrimoniais futuros", tipos de projeto, seletor de data, projeção de vida | 5 |
+| Configurações | Convite do cônjuge por e-mail, conta corrente apenas, remover aba Casal | 1, 6 |
+
+---
+
+## 2. Decisões arquiteturais aprovadas
+
+Estas quatro decisões estão **fechadas** e valem como especificação canônica.
+
+### D1 — Modelo "investimento dentro da conta" ✅ aprovado
+Cada conta corrente tem um `saldo_disponivel` e uma ou mais `posições de investimento` (registros-filhos vinculados à conta). Uma transferência para investimento gera **dois lançamentos vinculados**: saída do saldo disponível + entrada na posição de investimento.
+**Invariante obrigatória:** para a mesma conta, `saldo_disponivel + total_investido` não muda em uma transferência interna. O patrimônio da conta é sempre `disponível + investido`. A reserva de emergência é apenas uma posição de investimento com etiqueta especial.
+
+### D2 — Financiamentos e bens ✅ aprovado
+Financiamento é uma entidade dentro de **Dívidas**, com `valor_total`, `saldo_devedor`, `parcela_mensal`, `taxa`, `prazo`. Ele **gera automaticamente uma saída recorrente (a parcela)** todo mês até a quitação (cálculo Price a partir de valor/taxa/prazo). O bem correspondente entra em **Bens Materiais** com `valor_de_mercado` e pode ser vinculado a um financiamento. **Valor líquido do bem = valor_de_mercado − saldo_devedor do financiamento vinculado.** Nada de ferramenta externa: tudo dentro do painel para não haver digitação dupla.
+
+### D3 — Taxonomia dos projetos ✅ aprovado
+Projeto tem um campo único `tipo`:
+- **Retirada única** (ex: viagem — R$500k em dez/2040)
+- **Despesa recorrente** (ex: filho — +R$3k/mês a partir de jan/2028)
+- **Receita recorrente** (ex: renda de aluguel futura)
+- **Aporte extra** (ex: 13º direcionado à acumulação)
+
+A classificação "acumulação vs despesa" é **derivada automaticamente** do tipo (retirada única e aporte extra ⇒ acumulação; despesa recorrente ⇒ despesa). Sem campo extra para preencher.
+
+### D4 — Reserva de emergência ✅ aprovado
+Cada categoria de despesa ganha um checkbox `essencial`. **Reserva ideal = 6 × soma das despesas essenciais** (o multiplicador 6 é o padrão, editável). A reserva é uma posição de investimento com tipo de lançamento próprio ("Aporte reserva de emergência").
+
+---
+
+## 3. Recomendação técnica sobre financiamentos
+
+Cadastro no próprio painel, em **Dívidas → Financiamentos**, com a parcela virando saída recorrente automática até a quitação, e o bem (carro/casa) amarrado à dívida para o patrimônio líquido ficar honesto (valor de mercado − saldo devedor). Ferramenta externa só criaria digitação dupla e inconsistência entre Patrimônio, Dívidas e fluxo mensal. A parcela é calculada uma única vez na criação do financiamento (fórmula Price) a partir de `valor`, `taxa` e `prazo`.
+
+---
+
+## 4. Especificação por módulo
+
+### 4.1 Lançamentos
+
+**LAN-01 🔧 — Botão duplo Entrada / Saída**
+Substituir "+ Novo lançamento" por dois botões: **Entrada** e **Saída**. O clique abre o formulário já no modo correto.
+*Aceite:* "Saída" abre o formulário como saída; "Entrada" como entrada, sem passo intermediário.
+
+**LAN-02 🔧 — Ticket de fatura clicável** *(construir junto do PAT-06, Sprint 4)*
+Na aba Faturas, o ticket do mês (mês / fatura aberta / total / vencimento) vira clicável e leva à **tela de detalhe do cartão** (PAT-06), com todos os lançamentos da fatura.
+*Aceite:* clicar no ticket abre a fatura detalhada do cartão correspondente.
+
+**LAN-03 🔧 — Filtros em linha única**
+Busca + Categoria + Entrada/Saída passam de 3 linhas para **1 linha**: busca ocupando ~metade do espaço; Categoria e Entrada/Saída menores, no canto. Aplicar nas **três visualizações**: Meus, Conjunto, Cônjuge.
+*Aceite:* os três filtros lado a lado nas três abas, sem quebrar em telas menores.
+
+**LAN-04 🔧 — Corrigir modal do cartão de crédito**
+Ao marcar uma saída como cartão de crédito, o modal estoura a tela. Redimensionar para caber com folga (a seleção de tipo agora vem do topo — LAN-01).
+*Aceite:* modal cabe na viewport (desktop e mobile), sem overflow nem scroll horizontal.
+
+**LAN-05 🆕 — Importação OFX/CSV** *(Sprint 7)*
+Upload de OFX/CSV de conta e cartão. O sistema lê os lançamentos, cadastra e **categoriza**. Categorização aprende com o histórico; quando incerto, **pergunta** em vez de chutar.
+*Aceite:* upload gera lançamentos com categoria sugerida; ambíguos entram na fila "Confirmar categoria"; origem já categorizada antes vem preenchida sem perguntar de novo.
+
+---
+
+### 4.2 Patrimônio
+
+Três cards de resumo no topo, cada um expansível para uma lista embaixo (onde hoje ficam as contas fixadas).
+
+**PAT-01 🆕 — Card "Financeiro"**
+Mostra `Saldo em contas` (valor + nº de contas) e `Saldo em investimentos` (valor aplicado + nº de contas). Clique expande a lista de contas embaixo.
+
+**PAT-02 🆕 — Expansão do Financeiro**
+Cada conta mostra, resumido: saldo disponível, investido dentro dela e fatura de cartão em aberto vinculada. Ex: *Banco X — R$1.000 disponível · R$2.000 investido · R$1.000 fatura*.
+
+**PAT-03 🆕 — Card "Bens Materiais"**
+Total em bens (casa, carro etc.). Permite cadastrar bens. Clique expande a lista; cada bem abre seu ticket. Valor líquido conforme D2.
+
+**PAT-04 🆕 — Card "Dívidas"**
+Soma de financiamentos + soma das faturas de cartão em aberto. Clique expande: financiamentos e cartões, com drill-down em cada um. Resumo por cartão: total gasto, fatura atual, limite restante.
+
+**PAT-05 🆕 — Tela de detalhe da Conta**
+Saldo atual (só o que está na conta corrente), entradas do mês, saídas do mês. Abaixo: cartões vinculados, aba de investimentos (aplicado dentro da conta — fora do saldo atual) e lista de lançamentos.
+*Aceite:* saldo atual nunca inclui o investido; investimentos só na sua aba.
+
+**PAT-06 🆕 — Tela de detalhe do Cartão**
+Mesma navegação da conta, três abas: `Fatura atual` · `Total gasto / dívida` · `Limite restante`. Abaixo, todos os lançamentos do cartão. Destino do LAN-02.
+
+**PAT-07 🆕 — Tela de detalhe de Investimentos**
+Três resumos: `Valor investido` · `Rendimento acumulado` · `Projeção` (valor no vencimento; para ativos sem vencimento, projeção de 12 meses). Abaixo, lista com: nome, tipo (ex: CDB), vencimento, rendimento (% ao mês/ano), valor aplicado e quanto já rendeu.
+
+---
+
+### 4.3 Plano & Orçamento
+
+> Visão principal (renda do mês / gasto planejado / sobra investível) ✅ está boa — não mexer.
+
+**ORC-01 🔧 — Categorias editáveis**
+Em "Orçamento por classificação", permitir criar, editar e excluir categorias.
+*Aceite:* criar/editar/excluir reflete em lançamentos e relatórios.
+
+**ORC-02 🆕 — Reserva de emergência vinculada** *(D4)*
+Checkbox `essencial` nas categorias; reserva ideal = 6 × essenciais (multiplicador editável). Reserva entra como investimento (posição dedicada) com tipo de lançamento próprio.
+
+**ORC-03 🆕 — Transferência para investimento dentro da conta** *(D1 — fundação)*
+Saída da conta corrente para investimento: sai do saldo disponível, entra na posição de investimento da mesma conta. Dois lançamentos vinculados; patrimônio da conta = disponível + investido.
+*Aceite:* após transferir R$500, saldo disponível −R$500, posição de investimento +R$500, patrimônio total da conta inalterado.
+
+---
+
+### 4.4 Projetos & Independência Financeira
+
+**PRJ-01 🔧❌ — Fundir "Eventos Patrimoniais Futuros" em "Projetos"**
+Projetos **são** eventos patrimoniais futuros. Remover a aba/entidade separada de EPF; projetos assumem esse papel.
+
+**PRJ-02 🆕 — Tipos de projeto** *(D3)*
+Cada projeto declara o tipo: retirada única, despesa recorrente, receita recorrente ou aporte extra. "Acumulação vs despesa" é derivado.
+
+**PRJ-03 🆕 — Projetos dentro do mesmo pool de independência**
+O aporte do projeto **é** aporte de independência (mesmo lugar investido). O sistema calcula o aporte mensal necessário para bater a meta na data-alvo (ex: R$1.824,96/mês para R$500k em dez/2040). Na data-alvo, a retirada sai do montante total. **A aba Independência mostra só o agregado; o detalhe por projeto aparece só na aba Projetos.**
+*Aceite:* soma dos aportes mensais dos projetos = parte do aporte total de independência, sem dupla contagem; retirada na data-alvo reduz o montante projetado.
+
+**PRJ-04 🔧 — Seletor de data-alvo**
+Campo dinâmico e agradável: escolher mês e ano via calendário limpo (o atual está feio/travado).
+*Aceite:* mês/ano em ≤2 cliques, com calendário estilizado.
+
+**PRJ-05 🆕 — Escopo de planejamento de vida**
+Projetos cobrem casamento, carro, casa, abertura de empresa, cursos, filho, faculdade — cada um com projeção de quanto é preciso e a partir de quando.
+
+---
+
+### 4.5 Configurações
+
+> Dados pessoais ✅ · Segurança ✅ — não mexer.
+
+**CFG-01 🆕 — Convite do cônjuge por e-mail** *(Sprint 6)*
+Campo de e-mail na aba Cônjuge. Ao preencher, envia convite automático; o cônjuge define uma senha e acessa a **mesma plataforma**, com a mesma visão.
+*Aceite:* e-mail dispara convite; cônjuge cria senha e vê os mesmos dados; acesso protegido por RLS.
+
+**CFG-02 🔧 — Contas bancárias = só conta corrente**
+Remover poupança e investimento como tipos de conta. Investimentos ficam vinculados à conta corrente; poupança não é tratada como conta.
+*Aceite:* cadastro só permite conta corrente.
+
+**CFG-03 ❌ — Remover aba "Casal"**
+Excluir completamente a aba Casal.
+
+---
+
+## 5. Impacto no modelo de dados
+
+- `conta`: `tipo = corrente` fixo; ganha filhos `posicao_investimento` (nome, tipo, vencimento, taxa, valor_aplicado, rendimento_acumulado).
+- Transferência = par de `lancamento` vinculados (saída disponível + entrada posição), preservando a invariante D1.
+- `divida` (financiamento) gera `lancamento` recorrente até quitação; `bem_material` opcionalmente vinculado a uma `divida` (valor líquido = mercado − saldo devedor).
+- `categoria`: flag `essencial`.
+- `projeto`: absorve campos de EPF — `tipo`, `data_alvo`, `valor_alvo`, `aporte_mensal_calculado` — apontando para o pool de independência.
+- Cônjuge = segundo usuário no mesmo tenant (RLS por casal).
+
+---
+
+## 6. Riscos de execução
+
+| Risco | Gatilho | Contingência |
+|-------|---------|--------------|
+| Dupla contagem no patrimônio ao investir | Patrimônio total muda ao transferir p/ investimento | Teste da invariante D1 antes de seguir para Patrimônio |
+| Categorização OFX imprecisa no onboarding | Muitos itens em "Confirmar categoria" | Regras simples + fila de confirmação; aprendizado incremental |
+| Vazamento de dado entre casais | Query sem filtro de tenant | RLS obrigatória e testada antes do release do Sprint 6 |
+| Projeção de projetos divergir da independência | Soma dos projetos ≠ recorte do pool | Fonte única de verdade: o pool; projeto é recorte etiquetado |
+
+---
+
+## 7. Roadmap de Sprints
+
+Ordem: (a) wins visíveis rápido, (b) fundação do modelo financeiro antes das telas que dependem dele, (c) OFX/CSV por último, com lançamentos e categorias já estáveis.
+
+| Sprint | Nome | Requisitos | Depende de |
+|--------|------|-----------|-----------|
+| 1 | Ajustes rápidos de UI/config | LAN-01, LAN-03, LAN-04, PRJ-04, CFG-02, CFG-03 | — |
+| 2 | Fundação do modelo financeiro | ORC-03, ORC-02, ORC-01 | D1, D4 |
+| 3 | Aba Patrimônio | PAT-01, PAT-02, PAT-03, PAT-04 | Sprint 2, D2 |
+| 4 | Telas de detalhe | PAT-05, PAT-06, PAT-07, LAN-02 | Sprint 3 |
+| 5 | Projetos & Independência | PRJ-01, PRJ-02, PRJ-03, PRJ-05 | Sprint 2, D3 |
+| 6 | Acesso compartilhado (cônjuge) | CFG-01 | Modelo estável + RLS |
+| 7 | Importação OFX/CSV | LAN-05 | Sprints 1–4 |
+
+O detalhamento executável de cada sprint (prompts prontos para o Claude Code + modelo recomendado) está no documento **Pipeline de Execução — Sprints**.
