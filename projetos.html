@@ -343,6 +343,59 @@
       .kpi-grid-4 { grid-template-columns:1fr 1fr; }
       .type-grid { grid-template-columns:repeat(3,1fr); }
     }
+    /* ── PRJ-04: seletor de mês/ano ── */
+    .month-picker { position: relative; }
+    .mp-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+    }
+    .mp-trigger .mp-placeholder { color: var(--text-muted); }
+    .mp-trigger svg { color: var(--text-muted); flex-shrink: 0; }
+    .mp-pop {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      z-index: 60;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      padding: 12px;
+      width: 264px;
+    }
+    .mp-pop.open { display: block; }
+    .mp-year-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .mp-year-btn {
+      width: 30px; height: 30px;
+      border-radius: var(--radius-md);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-muted);
+      transition: all var(--transition);
+    }
+    .mp-year-btn:hover { background: var(--surface-alt); color: var(--text-primary); }
+    .mp-year-label { font-family: var(--font-display); font-weight: 700; font-size: .9375rem; color: var(--text-primary); }
+    .mp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .mp-month {
+      padding: 9px 4px;
+      border-radius: var(--radius-md);
+      font-size: .8125rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      transition: all var(--transition);
+    }
+    .mp-month:hover { background: var(--surface-alt); color: var(--text-primary); }
+    .mp-month.selected { background: var(--emerald-500); color: #fff; }
   </style>
 </head>
 <body>
@@ -659,7 +712,38 @@
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Data alvo</label>
-          <input class="input" type="month" id="field-date" />
+          <!-- PRJ-04: picker de mês/ano (o hidden mantém o formato YYYY-MM que o resto do código lê) -->
+          <div class="month-picker" id="month-picker">
+            <input type="hidden" id="field-date" />
+            <button type="button" class="input mp-trigger" id="mp-trigger">
+              <span id="mp-label" class="mp-placeholder">Selecionar mês/ano</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+            </button>
+            <div class="mp-pop" id="mp-pop">
+              <div class="mp-year-nav">
+                <button type="button" class="mp-year-btn" id="mp-prev-year">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                       fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m15 18-6-6 6-6"/>
+                  </svg>
+                </button>
+                <span class="mp-year-label" id="mp-year-label">2026</span>
+                <button type="button" class="mp-year-btn" id="mp-next-year">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                       fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m9 18 6-6-6-6"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="mp-grid" id="mp-grid"></div>
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Rentabilidade mensal (%)</label>
@@ -780,6 +864,51 @@ function fmtMonth(isoDate) {
   const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   return `${months[parseInt(m,10)-1]}/${y}`;
 }
+
+/* ──────────────────────────────────────────────
+   PRJ-04 — SELETOR DE MÊS/ANO
+   #field-date (hidden) continua sendo a fonte no formato YYYY-MM,
+   então updatePMTPreview e saveProject não mudam.
+─────────────────────────────────────────────── */
+const MP_MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const MP_MONTHS_FULL  = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                         'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+let mpYear = new Date().getFullYear();
+
+function mpSetValue(ym) {
+  document.getElementById('field-date').value = ym || '';
+  const label = document.getElementById('mp-label');
+  if (ym) {
+    const [y, m] = ym.split('-').map(Number);
+    label.textContent = `${MP_MONTHS_FULL[m - 1]} de ${y}`;
+    label.classList.remove('mp-placeholder');
+  } else {
+    label.textContent = 'Selecionar mês/ano';
+    label.classList.add('mp-placeholder');
+  }
+  /* o preview de PMT já escuta 'input' no #field-date */
+  document.getElementById('field-date').dispatchEvent(new Event('input'));
+}
+
+function mpRender() {
+  document.getElementById('mp-year-label').textContent = mpYear;
+  const cur = document.getElementById('field-date').value;
+  document.getElementById('mp-grid').innerHTML = MP_MONTHS_SHORT.map((mn, i) => {
+    const ym = `${mpYear}-${String(i + 1).padStart(2, '0')}`;
+    return `<button type="button" class="mp-month ${cur === ym ? 'selected' : ''}" data-ym="${ym}">${mn}</button>`;
+  }).join('');
+  document.querySelectorAll('.mp-month').forEach(b => {
+    b.addEventListener('click', () => { mpSetValue(b.dataset.ym); mpClose(); });
+  });
+}
+
+function mpOpen() {
+  const cur = document.getElementById('field-date').value;
+  mpYear = cur ? Number(cur.split('-')[0]) : new Date().getFullYear();
+  mpRender();
+  document.getElementById('mp-pop').classList.add('open');
+}
+function mpClose() { document.getElementById('mp-pop').classList.remove('open'); }
 
 /* ──────────────────────────────────────────────
    CÁLCULO PMT
@@ -1199,7 +1328,7 @@ function openModal(priority = null, projectId = null) {
     document.getElementById('field-target').value    = p.target_amount || '';
     document.getElementById('field-allocated').value = p.allocated_amount || 0;
     // target_date pode ser 'YYYY-MM-DD', precisa virar 'YYYY-MM' para input type=month
-    document.getElementById('field-date').value      = (p.target_date || '').substring(0,7);
+    mpSetValue((p.target_date || '').substring(0,7));
     document.getElementById('field-rate').value      = p.monthly_rate != null ? p.monthly_rate : 0.5;
   } else {
     // Novo
@@ -1209,7 +1338,7 @@ function openModal(priority = null, projectId = null) {
     document.getElementById('field-name').value      = '';
     document.getElementById('field-target').value    = '';
     document.getElementById('field-allocated').value = 0;
-    document.getElementById('field-date').value      = '';
+    mpSetValue('');
     document.getElementById('field-rate').value      = 0.5;
   }
 
@@ -1439,6 +1568,17 @@ function bindEvents() {
   // PMT em tempo real
   ['field-target','field-allocated','field-date','field-rate'].forEach(id => {
     document.getElementById(id).addEventListener('input', updatePMTPreview);
+  });
+
+  /* ── PRJ-04: listeners do seletor de mês/ano (funções no top-level, abaixo) ── */
+  document.getElementById('mp-trigger').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('mp-pop').classList.contains('open') ? mpClose() : mpOpen();
+  });
+  document.getElementById('mp-prev-year').addEventListener('click', () => { mpYear--; mpRender(); });
+  document.getElementById('mp-next-year').addEventListener('click', () => { mpYear++; mpRender(); });
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('month-picker').contains(e.target)) mpClose();
   });
 
   // Modal confirm excluir
