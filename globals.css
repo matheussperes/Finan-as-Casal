@@ -468,6 +468,11 @@ small { font-size: .75rem; color: var(--text-muted); }
   padding: 32px;
   transform: translateY(16px);
   transition: transform var(--transition-md);
+  /* LAN-04: modal nunca estoura a viewport — rola internamente */
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .modal-overlay.open .modal { transform: translateY(0); }
 

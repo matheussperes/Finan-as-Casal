@@ -137,6 +137,19 @@
     .search-input-wrap input { padding-left: 38px; height: 40px; font-size: .875rem; }
     .filter-select { height: 40px; padding: 0 36px 0 12px; font-size: .875rem; min-width: 160px; }
     .filter-btn { height: 40px; padding: 0 14px; font-size: .8125rem; gap: 6px; }
+    /* LAN-01: botões dedicados Entrada / Saída */
+    .btn-new-income  { background: var(--color-income);  color: #fff; }
+    .btn-new-income:hover  { background: var(--emerald-600); }
+    .btn-new-expense { background: var(--color-expense); color: #fff; }
+    .btn-new-expense:hover { background: #e11d48; }
+    /* LAN-03: filtros em uma única linha no desktop (vale para as 3 abas,
+       que compartilham esta mesma barra) */
+    @media (min-width: 768px) {
+      .filters-bar { flex-wrap: nowrap; }
+      .search-input-wrap { flex: 1 1 50%; min-width: 0; }
+      .filter-select { min-width: 140px; max-width: 200px; flex: 0 1 auto; }
+      .filter-btn { flex: 0 0 auto; }
+    }
     .table-card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -211,24 +224,6 @@
       margin: 0 auto 16px;
     }
     .modal-lg { max-width: 540px; }
-    .direction-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
-    .direction-btn {
-      padding: 12px;
-      border-radius: var(--radius-md);
-      border: 2px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      font-size: .875rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      transition: all var(--transition);
-      background: var(--surface);
-    }
-    .direction-btn:hover { border-color: var(--border-focus); }
-    .direction-btn.income.active { border-color: var(--color-income); background: var(--emerald-50); color: var(--emerald-700); }
-    .direction-btn.expense.active { border-color: var(--color-expense); background: #fff1f2; color: #be123c; }
     .amount-input-wrap { position: relative; }
     .amount-input-wrap .currency-prefix {
       position: absolute;
@@ -240,7 +235,8 @@
       pointer-events: none;
     }
     .amount-input-wrap input { padding-left: 36px; font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; height: 52px; }
-    .modal-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    /* minmax(0,1fr): impede que conteúdo largo cause overflow horizontal (LAN-04) */
+    .modal-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
     .modal-form-grid .full { grid-column: 1 / -1; }
     .modal-footer {
       display: flex;
@@ -629,13 +625,19 @@
           </svg>
           Gerenciar Cartões
         </button>
-        <button class="btn btn-primary" id="btn-new">
+        <button class="btn btn-new-income" id="btn-new-income">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
                fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5"  y1="12" x2="19" y2="12"/>
+            <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
           </svg>
-          Novo lançamento
+          Entrada
+        </button>
+        <button class="btn btn-new-expense" id="btn-new-expense">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+          </svg>
+          Saída
         </button>
       </div>
     </div>
@@ -769,9 +771,10 @@
           </div>
           <p class="empty-title" id="empty-title">Nenhum lançamento ainda</p>
           <p class="empty-desc" id="empty-desc">Registre entradas e saídas para acompanhar o mês de vocês.</p>
-          <button class="btn btn-primary" id="btn-empty-new" style="margin-top:8px">
-            Adicionar primeiro lançamento
-          </button>
+          <div id="empty-actions" style="display:inline-flex;gap:8px;margin-top:8px">
+            <button class="btn btn-new-income" id="btn-empty-income">Entrada</button>
+            <button class="btn btn-new-expense" id="btn-empty-expense">Saída</button>
+          </div>
         </div>
       </div>
     </div>
@@ -793,22 +796,7 @@
     <div id="tx-card-locked-note" style="display:none;background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 14px;font-size:.8125rem;color:var(--text-secondary);margin-bottom:16px">
       💳 Compra no cartão: conta, cartão, data e parcelas não podem ser alterados. Para mudar, exclua e lance novamente.
     </div>
-    <div class="direction-toggle" style="margin-bottom:20px">
-      <button class="direction-btn income active" data-dir="income" id="dir-income">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
-        </svg>
-        Entrada
-      </button>
-      <button class="direction-btn expense" data-dir="expense" id="dir-expense">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
-        </svg>
-        Saída
-      </button>
-    </div>
+    <!-- LAN-01: a direção vem do botão clicado (Entrada/Saída) — sem toggle intermediário -->
     <div class="modal-form-grid">
       <div class="form-group full">
         <label class="form-label">Conta</label>
@@ -1656,7 +1644,7 @@
       document.getElementById('empty-state').style.display = 'block';
       document.getElementById('empty-title').textContent = 'Erro ao carregar';
       document.getElementById('empty-desc').textContent = error.message;
-      document.getElementById('empty-state').querySelector('button').style.display = 'none';
+      document.getElementById('empty-actions').style.display = 'none';
       updateKPIs([]);
       return;
     }
@@ -2096,12 +2084,12 @@
       if (hasFilter) {
         document.getElementById('empty-title').textContent = 'Nenhum resultado';
         document.getElementById('empty-desc').textContent  = 'Tente outros filtros ou limpe a busca.';
-        empty.querySelector('button').style.display = 'none';
+        document.getElementById('empty-actions').style.display = 'none';
       } else {
         const tabLabel = { mine: 'em "Meus"', joint: 'em "Conjunto"', partner: 'do parceiro' }[activeTab] || '';
         document.getElementById('empty-title').textContent = `Nenhum lançamento ${tabLabel} neste mês`;
         document.getElementById('empty-desc').textContent  = 'Registre as entradas e saídas para acompanhar as finanças do casal.';
-        empty.querySelector('button').style.display = 'inline-flex';
+        document.getElementById('empty-actions').style.display = 'inline-flex';
       }
       return;
     }
@@ -2189,15 +2177,16 @@
   });
 
   /* ── MODAL NOVO / EDITAR ── */
-  function openNewModal() {
+  /* LAN-01: o formulário já abre no modo certo, sem passo intermediário */
+  function openNewModal(dir) {
     if (allAccounts.length === 0) {
       toast('Cadastre uma conta em Configurações antes de lançar.', 'error');
       return;
     }
     editingId = null;
-    document.getElementById('modal-tx-title').textContent = 'Novo lançamento';
+    document.getElementById('modal-tx-title').textContent = dir === 'income' ? 'Nova entrada' : 'Nova saída';
     document.getElementById('modal-tx-save').textContent  = 'Salvar lançamento';
-    resetModalForm();
+    resetModalForm(dir);
     openModal('modal-tx');
   }
 
@@ -2205,11 +2194,10 @@
     const tx = allTransactions.find(t => t.id === id);
     if (!tx) return;
     editingId = id;
-    document.getElementById('modal-tx-title').textContent = 'Editar lançamento';
+    document.getElementById('modal-tx-title').textContent =
+      tx.direction === 'income' ? 'Editar entrada' : 'Editar saída';
     document.getElementById('modal-tx-save').textContent  = 'Salvar alterações';
     selectedDir = tx.direction;
-    document.querySelectorAll('.direction-btn').forEach(b => b.classList.remove('active'));
-    document.querySelector(`.direction-btn.${tx.direction}`).classList.add('active');
     document.getElementById('tx-account').value      = tx.account_id || '';
     clearAccountError();
     document.getElementById('tx-amount').value       = tx.amount;
@@ -2227,8 +2215,6 @@
     document.getElementById('tx-account').disabled      = isCardTx;
     document.getElementById('tx-date').disabled         = isCardTx;
     document.getElementById('tx-installments').disabled = isCardTx;
-    document.getElementById('dir-income').disabled      = isCardTx;
-    document.getElementById('dir-expense').disabled     = isCardTx;
     document.getElementById('tx-method').disabled       = isCardTx;
 
     if (isCardTx) {
@@ -2249,10 +2235,8 @@
     openModal('modal-tx');
   }
 
-  function resetModalForm() {
-    selectedDir = 'income';
-    document.querySelectorAll('.direction-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('dir-income').classList.add('active');
+  function resetModalForm(dir = 'income') {
+    selectedDir = dir;
     // Pré-seleciona a conta conforme a aba ativa, quando fizer sentido (joint sem conta única não pré-seleciona)
     const defaultAccount = allAccounts.find(a => accountTabBucket(a.id) === activeTab);
     document.getElementById('tx-account').value      = defaultAccount?.id || '';
@@ -2261,12 +2245,12 @@
     document.getElementById('tx-desc').value         = '';
     document.getElementById('tx-date').value         = todayISO();
     document.getElementById('tx-place').value        = '';
-    document.getElementById('tx-cat').value          = 'Despesas obrigatórias';
+    document.getElementById('tx-cat').value          = dir === 'income' ? 'Renda' : 'Despesas obrigatórias';
     document.getElementById('tx-method').value       = 'pix';
     document.getElementById('tx-installments').value = 1;
     // Destrava campos que a edição de compra no cartão pode ter desabilitado
     document.getElementById('tx-card-locked-note').style.display = 'none';
-    ['tx-account','tx-date','tx-installments','tx-card','tx-method','dir-income','dir-expense']
+    ['tx-account','tx-date','tx-installments','tx-card','tx-method']
       .forEach(fid => { document.getElementById(fid).disabled = false; });
     refreshCardOptions();
   }
@@ -2279,18 +2263,6 @@
   document.getElementById('tx-account').addEventListener('change', () => {
     clearAccountError();
     refreshCardOptions();
-  });
-
-  document.querySelectorAll('.direction-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      selectedDir = btn.dataset.dir;
-      document.querySelectorAll('.direction-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const catSel = document.getElementById('tx-cat');
-      if (selectedDir === 'income' && catSel.value === 'Despesas obrigatórias') catSel.value = 'Renda';
-      else if (selectedDir === 'expense' && catSel.value === 'Renda') catSel.value = 'Despesas obrigatórias';
-      refreshCardOptions();
-    });
   });
 
   document.getElementById('modal-tx-save').addEventListener('click', saveTx);
@@ -2516,8 +2488,10 @@
   function openModal(id)  { document.getElementById(id).classList.add('open'); }
   function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-  document.getElementById('btn-new').addEventListener('click', openNewModal);
-  document.getElementById('btn-empty-new').addEventListener('click', openNewModal);
+  document.getElementById('btn-new-income').addEventListener('click',   () => openNewModal('income'));
+  document.getElementById('btn-new-expense').addEventListener('click',  () => openNewModal('expense'));
+  document.getElementById('btn-empty-income').addEventListener('click', () => openNewModal('income'));
+  document.getElementById('btn-empty-expense').addEventListener('click', () => openNewModal('expense'));
   document.getElementById('modal-tx-close').addEventListener('click',    () => closeModal('modal-tx'));
   document.getElementById('modal-tx-cancel').addEventListener('click',   () => closeModal('modal-tx'));
   document.getElementById('modal-delete-close').addEventListener('click',  () => closeModal('modal-delete'));
