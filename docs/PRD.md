@@ -249,3 +249,56 @@ da conta. Estas são as divergências encontradas e as decisões tomadas com o u
 - `lancamentos.html` — categorias carregadas do banco; ao escolher "Investimentos" ou "Aporte reserva
   de emergência" como classificação, o formulário vira uma transferência (ORC-03): pede/cria a posição
   de investimento e chama a RPC em vez de um insert comum.
+
+---
+
+## 9. Sprint 3 — Notas de implementação (Patrimônio, D2)
+
+Branch stackada sobre a do Sprint 2 (`claude/sprint-2-modelo-financeiro-ru934l`), não sobre `main` —
+nem o PR do Sprint 1 nem o do Sprint 2 estavam mesclados quando este sprint começou, e Patrimônio
+depende do modelo de categorias/investimento que o Sprint 2 introduziu (`categories`,
+`investment_positions`). Ver PRs para a ordem de merge correta.
+
+**O que foi construído:**
+
+1. **Financiamentos (D2).** Nova tabela `loans`: `valor_total`, `taxa` (mensal), `prazo`,
+   `parcela_mensal` (Price, calculada uma única vez na criação — `js/finance-model.js#pricePayment`),
+   `saldo_devedor`, `data_inicio`, conta de origem e titularidade (mesma convenção `owner_type`/
+   `member_id` das contas). **Decisão de projeto:** `saldo_devedor` nunca é editado à mão nem
+   decrementado de forma ad-hoc — é sempre derivado da tabela de amortização Price
+   (`js/finance-model.js#outstandingLoanBalance`) a partir de quantas parcelas já foram geradas como
+   lançamento (`transactions.loan_id`). Isso evita deriva de arredondamento e mantém uma única fonte
+   de verdade (a mesma lógica que calculou a parcela na criação também sabe o saldo a qualquer momento).
+
+2. **Parcela como saída recorrente automática.** Sem backend/cron neste projeto (é só front-end +
+   Supabase), a "geração automática todo mês" é feita por criação preguiçosa ao carregar a página —
+   mesmo padrão já usado para faturas de cartão em `lancamentos.html` (`getOrCreateInvoices`). A cada
+   carregamento de `patrimonio.html`, `ensureLoanInstallments()` compara quantas parcelas já deveriam
+   existir (contando meses de `data_inicio` até hoje) contra quantas já foram geradas, e insere as que
+   faltam como `transactions` (classificação "Financiamentos", já semeada no Sprint 2). Um financiamento
+   só pode ser excluído enquanto nenhuma parcela foi gerada (`ON DELETE RESTRICT` de `transactions.loan_id`
+   → `loans.id`, com a mensagem de erro tratada na UI).
+
+3. **Bens materiais (D2).** Nova tabela `assets`: nome, categoria (texto livre), `valor_mercado`,
+   financiamento vinculado opcional (`loan_id`, um bem por financiamento — índice único parcial) e
+   titularidade. Valor líquido = `valor_mercado − saldo_devedor` do financiamento vinculado
+   (`js/finance-model.js#assetNetWorth`), calculado sempre no cliente, nunca persistido.
+
+4. **UI do Patrimônio (PAT-01..04).** A antiga faixa de 3 KPIs + grade de contas foi substituída por
+   3 cards clicáveis (Financeiro / Bens Materiais / Dívidas) que alternam um único painel de expansão
+   abaixo — mantendo as abas Minhas/Do parceiro/Conjuntas já existentes. Bens e financiamentos abrem
+   um "ticket" (modal de detalhe) com editar/excluir; cartões dentro de Dívidas reaproveitam a tela de
+   detalhe da conta já existente como "drill-down" em vez de duplicar essa UI (ela já mostra fatura
+   atual/limite/vencimento por cartão) — a tela de detalhe dedicada ao cartão é o PAT-06 do Sprint 4.
+
+**Onde está o quê:**
+- `supabase/migrations/20260717130000_sprint3_patrimonio.sql` — tabelas `loans`/`assets`,
+  `transactions.loan_id`, RLS. Depende da migração do Sprint 2 já ter rodado. **Também precisa ser
+  colada manualmente no SQL Editor do Supabase.**
+- `js/finance-model.js` — `pricePayment`, `amortizationSchedule`, `outstandingLoanBalance`,
+  `assetNetWorth` (funções puras, sem I/O).
+- `tests/finance-model.test.js` — cobre a parcela Price contra um valor de referência conhecido, que a
+  soma das amortizações fecha o principal com saldo final exatamente zero, e o valor líquido do bem.
+- `patrimonio.html` — os 3 cards de resumo, os painéis de expansão, cadastro/ticket de bem, cadastro/
+  ticket de financiamento (com pré-visualização da parcela Price ao digitar) e a geração preguiçosa de
+  parcelas.

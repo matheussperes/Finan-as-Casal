@@ -4,6 +4,10 @@ const {
   accountNetWorth,
   applyTransfer,
   essentialReserveTarget,
+  pricePayment,
+  amortizationSchedule,
+  outstandingLoanBalance,
+  assetNetWorth,
 } = require('../js/finance-model.js');
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -97,4 +101,69 @@ test('essentialReserveTarget é zero sem categorias essenciais ou sem metas defi
   assert.equal(essentialReserveTarget([], {}, 6), 0);
   const categories = [{ name: 'Despesas obrigatórias', essencial: false }];
   assert.equal(essentialReserveTarget(categories, { 'Despesas obrigatórias': 1000 }, 6), 0);
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   D2 — Financiamentos: parcela pela fórmula de Price e valor líquido do bem
+   ══════════════════════════════════════════════════════════════════════ */
+test('pricePayment calcula a parcela pela fórmula de Price (caso de referência)', () => {
+  // P=10000, i=1% a.m., n=12 -> PMT ≈ 888.49 (valor de referência conhecido da tabela Price)
+  const pmt = pricePayment(10000, 0.01, 12);
+  assert.ok(Math.abs(pmt - 888.49) < 0.01, `esperado ~888.49, obtido ${pmt}`);
+});
+
+test('pricePayment com taxa zero é uma divisão simples do principal pelo prazo', () => {
+  assert.equal(pricePayment(1200, 0, 12), 100);
+});
+
+test('pricePayment com prazo zero ou negativo é zero', () => {
+  assert.equal(pricePayment(1000, 0.01, 0), 0);
+  assert.equal(pricePayment(1000, 0.01, -3), 0);
+});
+
+test('amortizationSchedule: soma das amortizações fecha o principal e o saldo final é zero', () => {
+  const principal = 50000;
+  const schedule = amortizationSchedule(principal, 0.015, 36);
+  assert.equal(schedule.length, 36);
+  const totalAmortized = schedule.reduce((s, row) => s + row.amortization, 0);
+  assert.ok(Math.abs(totalAmortized - principal) < 0.01, `amortização total ${totalAmortized} deveria fechar ${principal}`);
+  assert.equal(schedule[schedule.length - 1].balance, 0);
+  // saldo devedor é estritamente decrescente parcela a parcela
+  for (let i = 1; i < schedule.length; i++) {
+    assert.ok(schedule[i].balance <= schedule[i - 1].balance);
+  }
+});
+
+test('amortizationSchedule com taxa zero: amortização constante = parcela', () => {
+  const schedule = amortizationSchedule(1200, 0, 12);
+  schedule.forEach(row => {
+    assert.equal(row.interest, 0);
+    assert.equal(row.amortization, 100);
+  });
+  assert.equal(schedule[11].balance, 0);
+});
+
+test('outstandingLoanBalance: 0 parcelas pagas = principal cheio, >= prazo = quitado', () => {
+  const principal = 20000;
+  const rate = 0.012;
+  const n = 24;
+  assert.equal(outstandingLoanBalance(principal, rate, n, 0), principal);
+  assert.equal(outstandingLoanBalance(principal, rate, n, n), 0);
+  assert.equal(outstandingLoanBalance(principal, rate, n, n + 5), 0);
+});
+
+test('outstandingLoanBalance no meio do prazo bate com a tabela de amortização', () => {
+  const principal = 20000;
+  const rate = 0.012;
+  const n = 24;
+  const schedule = amortizationSchedule(principal, rate, n);
+  assert.equal(outstandingLoanBalance(principal, rate, n, 10), schedule[9].balance);
+  assert.ok(outstandingLoanBalance(principal, rate, n, 10) < principal);
+  assert.ok(outstandingLoanBalance(principal, rate, n, 10) > 0);
+});
+
+test('assetNetWorth = valor de mercado − saldo devedor do financiamento vinculado', () => {
+  assert.equal(assetNetWorth(80000, 30000), 50000);
+  assert.equal(assetNetWorth(80000, 0), 80000);
+  assert.equal(assetNetWorth(80000, null), 80000);
 });
