@@ -176,6 +176,178 @@
     return round2(currentTotal * Math.pow(1 + rate, months));
   }
 
+  /* ══════════════════════════════════════════════════════════════════════
+     D3 / PRJ-01..03 — Projetos como eventos patrimoniais futuros,
+     dentro do mesmo pool de independência.
+
+     Princípio anti-dupla-contagem (PRJ-03):
+     • O aporte de projeto é um RECORTE do aporte total de independência
+       (`monthly_contribution`) — nunca uma soma por cima. A simulação usa
+       sempre o aporte total; os PMTs por projeto são apenas etiquetas de
+       alocação dentro dele.
+     • `jaReservado` (allocated_amount) é um recorte do pool já investido —
+       reduz o que falta acumular para o projeto, mas nunca entra como
+       patrimônio adicional na simulação (o pool inteiro já é o patrimônio).
+     • Na data-alvo, a retirada sai do montante total do pool.
+     ══════════════════════════════════════════════════════════════════════ */
+
+  const PROJECT_TIPOS = ['retirada_unica', 'despesa_recorrente', 'receita_recorrente', 'aporte_extra'];
+
+  /**
+   * Derivação automática do D3 — sem campo extra para preencher:
+   * retirada única e aporte extra ⇒ acumulação; despesa recorrente ⇒
+   * despesa; receita recorrente ⇒ receita (o espelho lógico da despesa).
+   */
+  function projectKind(tipo) {
+    if (tipo === 'despesa_recorrente') return 'despesa';
+    if (tipo === 'receita_recorrente') return 'receita';
+    return 'acumulacao';
+  }
+
+  /** Taxa anual real -> taxa mensal equivalente (juros compostos). */
+  function annualToMonthlyRate(annualRate) {
+    return Math.pow(1 + (Number(annualRate) || 0), 1 / 12) - 1;
+  }
+
+  /**
+   * Aporte mensal necessário para acumular `valorAlvo` na data-alvo
+   * (PRJ-03): PMT = FV·r / ((1+r)^n − 1); com r=0, FV/n. `jaReservado` é o
+   * recorte do pool já etiquetado para o projeto. Retorna 0 se já atingido
+   * e null se não houver prazo válido (sem data ou data no passado).
+   * Ex. do PRD: R$500k em dez/2040 a 0,5% a.m. (173 meses) ⇒ ~R$1.824,95/mês.
+   */
+  function projectMonthlyContribution({ valorAlvo, jaReservado, monthsRemaining, taxaMensal }) {
+    const fv = Math.max(0, (Number(valorAlvo) || 0) - (Number(jaReservado) || 0));
+    if (fv <= 0) return 0;
+    if (!(monthsRemaining > 0)) return null;
+    const r = Number(taxaMensal) || 0;
+    if (r === 0) return round2(fv / monthsRemaining);
+    return round2((fv * r) / (Math.pow(1 + r, monthsRemaining) - 1));
+  }
+
+  /**
+   * PRJ-01 — projetos SÃO os eventos patrimoniais futuros. Converte a
+   * lista de projetos ativos no formato de evento que a simulação consome:
+   * retirada única / aporte extra são pontuais na data-alvo; despesa /
+   * receita recorrente valem de `target_date` até `end_date` (ou sempre).
+   */
+  function projectsToSimulationEvents(projects) {
+    return (projects || [])
+      .filter(p => p.is_active !== false && PROJECT_TIPOS.includes(p.tipo) && p.target_date)
+      .map(p => ({
+        tipo: p.tipo,
+        amount: Number(p.target_amount) || 0,
+        startMonth: String(p.target_date).substring(0, 7),
+        endMonth: p.end_date ? String(p.end_date).substring(0, 7) : null,
+      }));
+  }
+
+  /**
+   * Motor de simulação da independência financeira (extraído de
+   * futuro.html para ser puro e testável). Simula mês a mês de hoje
+   * (startYear/startMonth injetados — determinístico) até maxAge.
+   *
+   * Semântica por mês (preservada do motor original):
+   *   1. eventos pontuais mexem direto no patrimônio (retirada−/aporte+);
+   *   2. recorrentes ajustam o fluxo do mês (despesa−/receita+);
+   *   3. entra o aporte total (monthlyContrib + fluxo) — SEM somar PMTs de
+   *      projeto por cima: eles já são recorte do monthlyContrib;
+   *   4. rende a taxa mensal; nunca fica negativo.
+   */
+  function simulateIndependence(params, events, { startYear, startMonth }) {
+    const currentAge = Number(params.currentAge) || 30;
+    const targetAge = Number(params.targetAge) || 65;
+    const maxAge = Math.max(targetAge + 20, 85);
+    const rateAcc = Number(params.rateAcc) || 0;
+    const ratePost = Number(params.ratePost) || 0;
+    const desiredIncome = Number(params.desiredIncome) || 0;
+    const otherIncome = Number(params.otherIncome) || 0;
+    const monthlyContrib = Number(params.monthlyContrib) || 0;
+    const initialPatrimony = Number(params.initialPatrimony) || 0;
+
+    const monthlyRate = annualToMonthlyRate(rateAcc);
+    const netDesired = Math.max(0, desiredIncome - otherIncome);
+    const targetPatrimony = ratePost > 0 ? (netDesired * 12) / ratePost : 0;
+    const totalMonths = (maxAge - currentAge) * 12;
+
+    /* Lookup de eventos por mês (chave YYYY-MM) */
+    const eventMap = {};
+    (events || []).forEach(ev => {
+      if (!ev.startMonth) return;
+      const single = ev.tipo === 'retirada_unica' || ev.tipo === 'aporte_extra';
+      if (single) {
+        (eventMap[ev.startMonth] = eventMap[ev.startMonth] || []).push(ev);
+        return;
+      }
+      const [sy, sm] = ev.startMonth.split('-').map(Number);
+      const [ey, em] = ev.endMonth ? ev.endMonth.split('-').map(Number) : [startYear + maxAge, 12];
+      let cy = sy, cm = sm;
+      while (cy < ey || (cy === ey && cm <= em)) {
+        const key = `${cy}-${String(cm).padStart(2, '0')}`;
+        (eventMap[key] = eventMap[key] || []).push(ev);
+        cm++;
+        if (cm > 12) { cm = 1; cy++; }
+        if ((cy - sy) * 12 + (cm - sm) > totalMonths + 12) break;
+      }
+    });
+
+    const ageLabels = [];
+    const wealthCurve = [];
+    const targetLine = [];
+    const monthlyCurve = [];
+    let patrimony = initialPatrimony;
+    let ifAge = null;
+
+    for (let m = 0; m <= totalMonths; m++) {
+      const cy = startYear + Math.floor((startMonth + m) / 12);
+      const cm = ((startMonth + m) % 12) + 1;
+      const key = `${cy}-${String(cm).padStart(2, '0')}`;
+      const age = currentAge + m / 12;
+
+      let extraContrib = 0;
+      (eventMap[key] || []).forEach(ev => {
+        const amt = Number(ev.amount) || 0;
+        if (ev.tipo === 'retirada_unica') patrimony -= amt;
+        if (ev.tipo === 'aporte_extra') patrimony += amt;
+        if (ev.tipo === 'despesa_recorrente') extraContrib -= amt;
+        if (ev.tipo === 'receita_recorrente') extraContrib += amt;
+      });
+
+      patrimony += (monthlyContrib + extraContrib);
+      patrimony = patrimony * (1 + monthlyRate);
+      patrimony = Math.max(0, patrimony);
+
+      if (ifAge === null && targetPatrimony > 0 && patrimony >= targetPatrimony) {
+        ifAge = age;
+      }
+
+      monthlyCurve.push(patrimony);
+      if (m % 12 === 0) {
+        ageLabels.push(Math.floor(age));
+        wealthCurve.push(patrimony);
+        targetLine.push(targetPatrimony);
+      }
+    }
+
+    /* PMT necessário p/ atingir a meta na idade alvo (sem eventos) */
+    const nMonths = (targetAge - currentAge) * 12;
+    let pmtNeeded = null;
+    if (nMonths > 0 && targetPatrimony > 0) {
+      if (monthlyRate === 0) {
+        pmtNeeded = (targetPatrimony - initialPatrimony) / nMonths;
+      } else {
+        const factor = Math.pow(1 + monthlyRate, nMonths);
+        pmtNeeded = ((targetPatrimony - initialPatrimony * factor) * monthlyRate) / (factor - 1);
+      }
+    }
+
+    return {
+      targetPatrimony, pmtNeeded, ifAge, currentAge, targetAge,
+      ageLabels, wealthCurve, targetLine, monthlyCurve,
+      rateAcc, ratePost, desiredIncome, otherIncome, netDesired, monthlyContrib,
+    };
+  }
+
   return {
     PROTECTED_CATEGORY_NAMES,
     FALLBACK_CATEGORY_NAME,
@@ -191,5 +363,11 @@
     monthsBetween,
     annualizedRate,
     investmentProjection,
+    PROJECT_TIPOS,
+    projectKind,
+    annualToMonthlyRate,
+    projectMonthlyContribution,
+    projectsToSimulationEvents,
+    simulateIndependence,
   };
 });

@@ -353,3 +353,54 @@ de fatura) batem com o esperado. Sem erros de JS em nenhum passo.
 - `patrimonio.html` — sub-abas do detalhe da conta, modal de edição de posição, view "Investimentos"
   (PAT-07), view "Detalhe do Cartão" (PAT-06), parsing de querystring no init.
 - `lancamentos.html` — ticket de fatura agora navega para o PAT-06 (LAN-02).
+
+---
+
+## 11. Sprint 5 — Notas de implementação (Projetos & Independência, D3)
+
+Branch stackada sobre a do Sprint 4. Cuidado central do sprint: **não haver dupla contagem entre
+projetos e independência** — resolvido com três decisões estruturais:
+
+1. **PRJ-01 — fusão EPF ⇒ Projetos.** Os 4 `event_type` da antiga tabela `independence_events`
+   (`withdrawal`/`extra_deposit`/`expense`/`income`) mapeiam 1:1 para os 4 tipos do D3 — a migração
+   converte cada evento existente num projeto (categoria "outro", prioridade "Desejo") e **dropa a
+   tabela**. Toda a UI de eventos em `futuro.html` (seção, modal, handlers) foi removida; a simulação
+   agora lê os projetos diretamente.
+
+2. **PRJ-02 (D3) — campo único `tipo`.** `projects.tipo` (check nos 4 valores, default
+   `retirada_unica` — que preenche as linhas legadas com o comportamento idêntico ao anterior) +
+   `end_date` para os recorrentes. A classificação acumulação/despesa/receita é **derivada**
+   (`js/finance-model.js#projectKind`), exibida como badge — sem campo extra. `tipo` (natureza
+   financeira, D3) coexiste com `project_type` (categoria temática: viagem/casa/filho… — PRJ-05);
+   são eixos diferentes do mesmo projeto.
+
+3. **PRJ-03 — pool único, aporte como recorte.** Três garantias anti-dupla-contagem:
+   - **Taxa única:** o PMT de projeto usa SEMPRE a taxa do pool
+     (`independence_params.real_rate_accumulation`, convertida para mensal) — o campo
+     "rentabilidade mensal" por projeto foi removido do formulário e `monthly_rate` ficou deprecada
+     (um projeto não rende diferente do pool onde o dinheiro realmente está).
+   - **Aporte como recorte:** a simulação usa só o `monthly_contribution` total; os PMTs por projeto
+     são etiquetas de alocação dentro dele (a UI de Projetos mostra "recorte do aporte de IF" e avisa
+     se a soma dos PMTs exceder o aporte total). Somar os PMTs nunca adiciona nada à curva.
+   - **Retirada do montante total:** na data-alvo, a retirada sai do pool inteiro
+     (patrimônio − valor), exatamente como o PRD pede.
+   Na aba Independência aparece **só o agregado** (nº por tipo, totais, recorte do aporte); o detalhe
+   por projeto fica só na aba Projetos.
+
+**Motor de simulação extraído:** `runSimulation` saiu de `futuro.html` para
+`js/finance-model.js#simulateIndependence` (puro, com data de início injetada), viabilizando os
+testes-chave: com taxa 0, patrimônio final = P0 + aportes totais − retiradas − despesas recorrentes
+(qualquer excedente denunciaria PMT somado por cima); curvas com/sem projeto idênticas antes da
+data-alvo e diferindo exatamente pelo valor retirado depois. O exemplo literal do PRD também é
+testado: R$500k em dez/2040 a 0,5% a.m. (173 meses a partir de jul/2026) ⇒ ~R$1.824,95/mês.
+
+**Onde está o quê:**
+- `supabase/migrations/20260718170000_sprint5_projetos.sql` — `projects.tipo` + `end_date`, migração
+  EPF→projetos, drop de `independence_events`. **Pendente de aplicação** (MCP do Supabase estava
+  desconectado neste sprint) — colar no SQL Editor ou reconectar o MCP.
+- `js/finance-model.js` — `PROJECT_TIPOS`, `projectKind`, `annualToMonthlyRate`,
+  `projectMonthlyContribution`, `projectsToSimulationEvents`, `simulateIndependence`.
+- `tests/finance-model.test.js` — 30 testes no total (21 anteriores + 9 novos).
+- `projetos.html` — seletor de tipo D3 com campos condicionais, badge derivado, PMT pela taxa do
+  pool, KPI/nota de recorte do aporte.
+- `futuro.html` — UI de EPF removida, simulação via projetos, card agregado "Projetos no plano".

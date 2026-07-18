@@ -6,6 +6,7 @@
   <title>Finanças do Casal — Projetos</title>
   <link rel="stylesheet" href="globals.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/finance-model.js"></script>
   <style>
 
     /* ─── Sidebar overlay mobile ─── */
@@ -286,6 +287,38 @@
     .type-option .type-emoji { font-size:1.5rem; line-height:1; }
     .type-option .type-name  { font-size:.6875rem; font-weight:600; color:var(--text-secondary); line-height:1.2; }
 
+    /* Seletor de tipo D3 (natureza financeira — PRJ-02) */
+    .tipo-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .tipo-option {
+      display:flex; align-items:center; gap:10px; padding:10px 12px;
+      border-radius:var(--radius-md); border:2px solid var(--border);
+      cursor:pointer; transition:all .15s; text-align:left;
+    }
+    .tipo-option:hover { border-color:var(--primary); background:var(--primary-light); }
+    .tipo-option.selected { border-color:var(--primary); background:var(--primary-light); }
+    .tipo-option .tipo-emoji { font-size:1.25rem; line-height:1; flex-shrink:0; }
+    .tipo-option .tipo-label { font-size:.8125rem; font-weight:700; color:var(--text-primary); line-height:1.2; }
+    .tipo-option .tipo-sub   { font-size:.6875rem; color:var(--text-muted); margin-top:2px; }
+
+    /* Badge derivado do tipo (acumulação/despesa/receita — D3) */
+    .kind-badge {
+      display:inline-flex; align-items:center; gap:4px;
+      font-size:.625rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+      padding:2px 8px; border-radius:var(--radius-full); vertical-align:middle;
+    }
+    .kind-badge.acumulacao { background:var(--emerald-100); color:var(--emerald-700); }
+    .kind-badge.despesa    { background:#fff1f2; color:#be123c; }
+    .kind-badge.receita    { background:#eff6ff; color:#1d4ed8; }
+
+    /* Nota de recorte do pool (PRJ-03) */
+    .pool-note {
+      display:flex; align-items:flex-start; gap:8px;
+      background:#eff6ff; border:1px solid #bfdbfe; border-radius:var(--radius-md);
+      padding:10px 14px; font-size:.75rem; color:#1e40af; line-height:1.5;
+      margin-bottom:20px;
+    }
+    .pool-note.warn { background:#fffbeb; border-color:#fde68a; color:#92400e; }
+
     /* PMT preview */
     .pmt-preview {
       background:var(--emerald-50); border:1px solid var(--emerald-200);
@@ -562,6 +595,9 @@
         </div>
       </div>
 
+      <!-- PRJ-03 — recorte do pool de independência -->
+      <div class="pool-note" id="pool-note" style="display:none"></div>
+
       <!-- Projetos por prioridade -->
       <div id="projects-container">
         <!-- Renderizado pelo JS -->
@@ -618,9 +654,18 @@
 
     <div class="modal-body">
 
-      <!-- Tipo -->
+      <!-- Tipo (D3 — natureza financeira, PRJ-02) -->
       <div class="form-group">
-        <label class="form-label">Tipo de projeto</label>
+        <label class="form-label">Tipo</label>
+        <div class="tipo-grid" id="tipo-grid">
+          <!-- renderizado pelo JS -->
+        </div>
+        <span class="form-hint" id="tipo-kind-hint">Acumulação e despesa são derivadas do tipo — nada mais a preencher.</span>
+      </div>
+
+      <!-- Categoria temática (PRJ-05) -->
+      <div class="form-group">
+        <label class="form-label">Categoria</label>
         <div class="type-grid" id="type-grid">
           <!-- renderizado pelo JS -->
         </div>
@@ -642,33 +687,33 @@
         <input class="input" type="text" id="field-name" placeholder="Ex: Lua de mel em Portugal" maxlength="80" />
       </div>
 
-      <!-- Valor alvo + Alocado -->
+      <!-- Valores (labels mudam conforme o tipo) -->
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Valor alvo (R$)</label>
+          <label class="form-label" id="field-target-label">Valor alvo (R$)</label>
           <input class="input" type="number" id="field-target" placeholder="25000" min="0" step="0.01" />
         </div>
-        <div class="form-group">
-          <label class="form-label">Já alocado (R$)</label>
+        <div class="form-group" id="field-allocated-group">
+          <label class="form-label">Já reservado do pool (R$)</label>
           <input class="input" type="number" id="field-allocated" placeholder="0" min="0" step="0.01" />
-          <span class="form-hint">Quanto já têm guardado para este objetivo</span>
+          <span class="form-hint">Recorte do que já está investido, etiquetado para este projeto</span>
         </div>
       </div>
 
-      <!-- Data alvo + Taxa -->
+      <!-- Datas (labels mudam conforme o tipo) -->
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Data alvo</label>
+          <label class="form-label" id="field-date-label">Data alvo</label>
           <input class="input" type="month" id="field-date" />
         </div>
-        <div class="form-group">
-          <label class="form-label">Rentabilidade mensal (%)</label>
-          <input class="input" type="number" id="field-rate" placeholder="0.5" min="0" max="5" step="0.01" />
-          <span class="form-hint">0 = sem rendimento; 0,5% = Tesouro Selic (est.)</span>
+        <div class="form-group" id="field-end-date-group" style="display:none">
+          <label class="form-label">Até <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+          <input class="input" type="month" id="field-end-date" />
+          <span class="form-hint">Vazio = sem fim previsto</span>
         </div>
       </div>
 
-      <!-- PMT preview -->
+      <!-- PMT preview (a taxa vem do pool de independência — PRJ-03) -->
       <div class="pmt-preview" id="pmt-preview">
         <div class="pmt-label" id="pmt-preview-label">Aporte mensal estimado</div>
         <div class="pmt-amount" id="pmt-preview-value">—</div>
@@ -750,6 +795,16 @@ const PRIORITY_CONFIG = {
 
 const PRIORITY_ORDER = ['Essencial', 'Desejo', 'Sonho'];
 
+/* Tipos D3 (PRJ-02) — a natureza financeira do projeto. A classificação
+   acumulação/despesa/receita é derivada (FinanceModel.projectKind). */
+const TIPO_META = {
+  retirada_unica:     { emoji: '🎯', label: 'Retirada única',     sub: 'Juntar para gastar na data-alvo (viagem, entrada…)' },
+  despesa_recorrente: { emoji: '📉', label: 'Despesa recorrente', sub: 'Novo custo mensal a partir de uma data (filho, escola…)' },
+  receita_recorrente: { emoji: '📈', label: 'Receita recorrente', sub: 'Nova renda mensal futura (aluguel recebido…)' },
+  aporte_extra:       { emoji: '💰', label: 'Aporte extra',       sub: 'Entrada única no pool (13º, bônus, herança…)' },
+};
+const KIND_LABEL = { acumulacao: 'Acumulação', despesa: 'Despesa', receita: 'Receita' };
+
 /* ──────────────────────────────────────────────
    ESTADO
 ─────────────────────────────────────────────── */
@@ -757,7 +812,10 @@ let householdId   = null;
 let projects      = [];         // todos os projetos do casal
 let editingId     = null;       // id do projeto em edição (null = novo)
 let deleteId      = null;       // id a excluir
-let selectedType  = 'viagem';   // tipo selecionado no modal
+let selectedType  = 'viagem';   // categoria temática (PRJ-05)
+let selectedTipo  = 'retirada_unica'; // tipo D3 (PRJ-02)
+let independenceParams = null;  // parâmetros do pool (taxa + aporte total) — PRJ-03
+let poolMonthlyRate    = 0;     // taxa mensal do pool, derivada de real_rate_accumulation
 
 /* ──────────────────────────────────────────────
    FORMATAÇÃO
@@ -782,36 +840,34 @@ function fmtMonth(isoDate) {
 }
 
 /* ──────────────────────────────────────────────
-   CÁLCULO PMT
-   PMT = FV * r / ((1+r)^n - 1)
-   Se r=0: PMT = FV / n
+   CÁLCULO DO APORTE (PRJ-03)
+   A taxa é SEMPRE a do pool de independência
+   (real_rate_accumulation) — o dinheiro do projeto
+   é o mesmo dinheiro investido, no mesmo lugar.
+   Fórmula em js/finance-model.js#projectMonthlyContribution.
 ─────────────────────────────────────────────── */
-function calcPMT(targetAmount, allocatedAmount, targetDateStr, monthlyRatePct) {
+function calcPMT(targetAmount, allocatedAmount, targetDateStr) {
   const fv = Math.max(0, (targetAmount || 0) - (allocatedAmount || 0));
   if (fv <= 0) return { pmt: 0, months: 0, ok: true, done: true };
-
   if (!targetDateStr) return { pmt: null, months: 0, ok: false, done: false };
 
-  // Calcular número de meses até a data alvo
-  const now   = new Date();
-  const nowY  = now.getFullYear();
-  const nowM  = now.getMonth(); // 0-indexed
+  const n = monthsUntil(targetDateStr);
+  if (n === null || n <= 0) return { pmt: null, months: n || 0, ok: false, done: false };
 
-  let [tY, tM] = targetDateStr.split('-').map(Number);
-  // Se vier como YYYY-MM-DD, ignorar o dia
-  const n = (tY - nowY) * 12 + (tM - 1 - nowM);
+  const pmt = FinanceModel.projectMonthlyContribution({
+    valorAlvo: targetAmount, jaReservado: allocatedAmount,
+    monthsRemaining: n, taxaMensal: poolMonthlyRate,
+  });
+  return { pmt, months: n, ok: pmt !== null, done: false };
+}
 
-  if (n <= 0) return { pmt: null, months: n, ok: false, done: false };
-
-  const r = (monthlyRatePct || 0) / 100;
-  let pmt;
-  if (r === 0) {
-    pmt = fv / n;
-  } else {
-    pmt = fv * r / (Math.pow(1 + r, n) - 1);
-  }
-
-  return { pmt, months: n, ok: true, done: false };
+/* PMT de um projeto: só retirada única acumula (D3 — os demais tipos não
+   têm aporte mensal: aporte extra é pontual; recorrentes mudam o fluxo). */
+function projectPMT(p) {
+  const tipo = p.tipo || 'retirada_unica';
+  if (tipo !== 'retirada_unica' || p.is_active === false) return 0;
+  const r = calcPMT(p.target_amount, p.allocated_amount, p.target_date);
+  return (r.ok && !r.done) ? (r.pmt || 0) : 0;
 }
 
 /* ──────────────────────────────────────────────
@@ -864,15 +920,20 @@ async function init() {
   if (!member?.household_id) { window.location.href = 'onboarding.html'; return; }
   householdId = member.household_id;
 
-  // Busca nome do casal — query separada
-  const { data: hh } = await _supabase
-    .from('households')
-    .select('name')
-    .eq('id', householdId)
-    .maybeSingle();
+  // Busca nome do casal e parâmetros do pool de independência — queries separadas
+  const [{ data: hh }, { data: ip }] = await Promise.all([
+    _supabase.from('households').select('name').eq('id', householdId).maybeSingle(),
+    _supabase.from('independence_params').select('*').eq('household_id', householdId).maybeSingle(),
+  ]);
 
   document.getElementById('couple-name-text').textContent = hh?.name || 'Nosso Casal';
 
+  /* PRJ-03 — fonte única de verdade: o pool. A taxa dos cálculos de aporte
+     é a taxa real de acumulação da independência, nunca uma taxa por projeto. */
+  independenceParams = ip || null;
+  poolMonthlyRate = FinanceModel.annualToMonthlyRate(ip?.real_rate_accumulation ?? 0.04);
+
+  renderTipoGrid();
   renderTypeGrid();
   bindEvents();
   await loadProjects();
@@ -912,23 +973,64 @@ function renderAll() {
 function renderKPIs() {
   const active    = projects.filter(p => p.is_active !== false);
   const inactive  = projects.filter(p => p.is_active === false);
-  const totalPMT  = active.reduce((sum, p) => {
-    const r = calcPMT(p.target_amount, p.allocated_amount, p.target_date, p.monthly_rate);
-    return sum + (r.ok && !r.done ? (r.pmt || 0) : 0);
-  }, 0);
-  const totalAlloc  = projects.reduce((s, p) => s + (Number(p.allocated_amount) || 0), 0);
-  const totalTarget = projects.reduce((s, p) => s + (Number(p.target_amount) || 0), 0);
+  const totalPMT  = active.reduce((sum, p) => sum + projectPMT(p), 0);
+
+  /* Acumulado/alvo só fazem sentido para acumulação de retirada única —
+     recorrentes têm valor mensal, aporte extra é pontual */
+  const accProjects = projects.filter(p => (p.tipo || 'retirada_unica') === 'retirada_unica');
+  const totalAlloc  = accProjects.reduce((s, p) => s + (Number(p.allocated_amount) || 0), 0);
+  const totalTarget = accProjects.reduce((s, p) => s + (Number(p.target_amount) || 0), 0);
 
   document.getElementById('kpi-active').textContent    = active.length;
   document.getElementById('kpi-active-sub').textContent = `${inactive.length} pausado${inactive.length !== 1 ? 's' : ''}`;
   document.getElementById('kpi-pmt').textContent       = fmtBRL(totalPMT);
-  document.getElementById('kpi-pmt-sub').textContent   = `${active.length} projeto${active.length !== 1 ? 's' : ''} ativos`;
+
+  /* PRJ-03 — o aporte dos projetos é um RECORTE do aporte total de
+     independência, nunca uma soma por cima */
+  const poolContrib = Number(independenceParams?.monthly_contribution) || 0;
+  document.getElementById('kpi-pmt-sub').textContent = poolContrib > 0
+    ? `recorte do aporte de IF (${fmtBRL(poolContrib)}/mês)`
+    : `${active.length} projeto${active.length !== 1 ? 's' : ''} ativos`;
+
   document.getElementById('kpi-allocated').textContent = fmtBRL(totalAlloc);
   document.getElementById('kpi-allocated-sub').textContent = totalTarget > 0
     ? `${Math.round((totalAlloc / totalTarget) * 100)}% do total`
     : '—';
   document.getElementById('kpi-target').textContent    = fmtBRL(totalTarget);
-  document.getElementById('kpi-target-sub').textContent = `${projects.length} projeto${projects.length !== 1 ? 's' : ''} no total`;
+  document.getElementById('kpi-target-sub').textContent = `${accProjects.length} retirada${accProjects.length !== 1 ? 's' : ''} única${accProjects.length !== 1 ? 's' : ''}`;
+
+  renderPoolNote(totalPMT, poolContrib);
+}
+
+/* ──────────────────────────────────────────────
+   NOTA DO POOL (PRJ-03 — recorte, não soma)
+─────────────────────────────────────────────── */
+function renderPoolNote(totalPMT, poolContrib) {
+  const note = document.getElementById('pool-note');
+  if (poolContrib <= 0 && totalPMT <= 0) { note.style.display = 'none'; return; }
+
+  const ratePctMonth = (poolMonthlyRate * 100).toFixed(2).replace('.', ',');
+  note.style.display = 'flex';
+
+  if (poolContrib > 0 && totalPMT > poolContrib) {
+    note.className = 'pool-note warn';
+    note.innerHTML = `⚠️ <span>Os aportes dos projetos somam <strong>${fmtBRL(totalPMT)}/mês</strong>, acima do
+      aporte total de independência (<strong>${fmtBRL(poolContrib)}/mês</strong>). Aumente o aporte na aba
+      <a href="futuro.html" style="color:inherit;text-decoration:underline">Independência</a> ou ajuste os projetos —
+      o aporte de projeto é um recorte do total, não uma soma à parte.</span>`;
+  } else if (poolContrib > 0) {
+    const sobra = poolContrib - totalPMT;
+    note.className = 'pool-note';
+    note.innerHTML = `💡 <span>Projetos e independência usam o <strong>mesmo pool investido</strong> (taxa de
+      ${ratePctMonth}% a.m.). Do aporte total de <strong>${fmtBRL(poolContrib)}/mês</strong>,
+      <strong>${fmtBRL(totalPMT)}</strong> estão etiquetados para projetos e
+      <strong>${fmtBRL(sobra)}</strong> seguem livres para a independência — sem contar nada duas vezes.</span>`;
+  } else {
+    note.className = 'pool-note';
+    note.innerHTML = `💡 <span>Defina o aporte mensal na aba
+      <a href="futuro.html" style="color:inherit;text-decoration:underline">Independência</a> para ver quanto dos
+      projetos cabe dentro dele — projetos e independência usam o mesmo pool investido.</span>`;
+  }
 }
 
 /* ──────────────────────────────────────────────
@@ -961,10 +1063,7 @@ function renderProjectsSections() {
     // Mostrar seção mesmo se vazia (para permitir adicionar naquela prioridade)
     const pCfg = PRIORITY_CONFIG[priority];
 
-    const activePMT = group.filter(p => p.is_active !== false).reduce((sum, p) => {
-      const r = calcPMT(p.target_amount, p.allocated_amount, p.target_date, p.monthly_rate);
-      return sum + (r.ok && !r.done ? (r.pmt || 0) : 0);
-    }, 0);
+    const activePMT = group.reduce((sum, p) => sum + projectPMT(p), 0);
 
     const section = document.createElement('div');
     section.className = 'priority-section';
@@ -1001,8 +1100,70 @@ function renderProjectCard(p) {
   const pct      = target > 0 ? Math.min((alloc / target) * 100, 100) : 0;
   const done     = pct >= 100;
 
-  const pmtResult = calcPMT(target, alloc, p.target_date, Number(p.monthly_rate) || 0);
+  const tipo     = p.tipo || 'retirada_unica';
+  const tipoMeta = TIPO_META[tipo] || TIPO_META['retirada_unica'];
+  const kind     = FinanceModel.projectKind(tipo);
+  const kindBadge = `<span class="kind-badge ${kind}">${KIND_LABEL[kind]}</span>`;
+
+  const pmtResult = calcPMT(target, alloc, p.target_date);
   const mos       = monthsUntil(p.target_date);
+
+  /* Tipos não-acumulativos têm um card mais simples: valor + período,
+     sem PMT nem barra de progresso (nada a poupar mensalmente) */
+  if (tipo !== 'retirada_unica') {
+    const isRecorrente = tipo === 'despesa_recorrente' || tipo === 'receita_recorrente';
+    const valorLabel   = isRecorrente ? `${fmtBRL(target)}/mês` : fmtBRL(target);
+    const quando       = isRecorrente
+      ? `a partir de ${fmtMonth(p.target_date)}${p.end_date ? ` até ${fmtMonth(p.end_date)}` : ''}`
+      : `${tipo === 'aporte_extra' ? 'entra no pool em' : 'em'} ${fmtMonth(p.target_date)}`;
+    return `
+    <div class="project-card ${pCfg.cls}${!active ? ' inactive' : ''}" data-id="${p.id}">
+      <div class="project-card-top">
+        <div class="project-icon-name">
+          <div class="project-type-icon" style="background:${type.bg};color:${type.color}">
+            ${type.emoji}
+          </div>
+          <div>
+            <div class="project-name" title="${escHtml(p.name)}">${escHtml(p.name)}</div>
+            <div class="project-type-label">${tipoMeta.emoji} ${tipoMeta.label} ${kindBadge}</div>
+          </div>
+        </div>
+        <div class="project-actions">
+          <label class="toggle-switch" title="${active ? 'Pausar' : 'Ativar'} projeto">
+            <input type="checkbox" class="project-toggle" data-id="${p.id}" ${active ? 'checked' : ''} />
+            <span class="toggle-slider"></span>
+          </label>
+          <button class="project-action-btn" title="Editar" data-action="edit" data-id="${p.id}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+          <button class="project-action-btn danger" title="Excluir" data-action="delete" data-id="${p.id}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14H6L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/>
+              <path d="M9 6V4h6v2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="project-values" style="grid-template-columns:1fr 1fr">
+        <div class="project-value-item">
+          <div class="project-value-label">${isRecorrente ? (kind === 'despesa' ? 'Despesa mensal' : 'Receita mensal') : 'Valor'}</div>
+          <div class="project-value-num">${valorLabel}</div>
+        </div>
+        <div class="project-value-item">
+          <div class="project-value-label">Quando</div>
+          <div class="project-value-num" style="font-size:.9375rem">${quando}</div>
+        </div>
+      </div>
+      <div class="form-hint" style="margin-top:10px">Entra automaticamente na projeção de independência.</div>
+    </div>`;
+  }
 
   let pmtDisplay, pmtClass;
   if (done) {
@@ -1058,7 +1219,7 @@ function renderProjectCard(p) {
           </div>
           <div>
             <div class="project-name" title="${escHtml(p.name)}">${escHtml(p.name)}</div>
-            <div class="project-type-label">${type.label}</div>
+            <div class="project-type-label">${tipoMeta.emoji} ${tipoMeta.label} · ${type.label} ${kindBadge}</div>
           </div>
         </div>
         <div class="project-actions">
@@ -1145,10 +1306,9 @@ function renderSummaryBar() {
   const pmtByPriority = { Essencial: 0, Desejo: 0, Sonho: 0 };
   let totalPMT = 0;
 
-  projects.filter(p => p.is_active !== false).forEach(p => {
-    const r = calcPMT(p.target_amount, p.allocated_amount, p.target_date, Number(p.monthly_rate) || 0);
-    if (r.ok && !r.done) {
-      const pmt = r.pmt || 0;
+  projects.forEach(p => {
+    const pmt = projectPMT(p);
+    if (pmt > 0) {
       pmtByPriority[p.priority] = (pmtByPriority[p.priority] || 0) + pmt;
       totalPMT += pmt;
     }
@@ -1162,8 +1322,45 @@ function renderSummaryBar() {
 }
 
 /* ──────────────────────────────────────────────
-   MODAL — TIPO GRID
+   MODAL — TIPO D3 (PRJ-02) + CATEGORIA (PRJ-05)
 ─────────────────────────────────────────────── */
+function renderTipoGrid() {
+  const grid = document.getElementById('tipo-grid');
+  grid.innerHTML = Object.entries(TIPO_META).map(([id, t]) => `
+    <div class="tipo-option${id === selectedTipo ? ' selected' : ''}"
+         data-tipo="${id}" onclick="selectTipo('${id}')">
+      <span class="tipo-emoji">${t.emoji}</span>
+      <div>
+        <div class="tipo-label">${t.label}</div>
+        <div class="tipo-sub">${t.sub}</div>
+      </div>
+    </div>`).join('');
+}
+
+function selectTipo(tipoId) {
+  selectedTipo = tipoId;
+  document.querySelectorAll('.tipo-option').forEach(el => {
+    el.classList.toggle('selected', el.dataset.tipo === tipoId);
+  });
+
+  /* Campos condicionais por tipo */
+  const isRetirada   = tipoId === 'retirada_unica';
+  const isRecorrente = tipoId === 'despesa_recorrente' || tipoId === 'receita_recorrente';
+
+  document.getElementById('field-target-label').textContent =
+    isRetirada ? 'Valor alvo (R$)' : (isRecorrente ? 'Valor mensal (R$)' : 'Valor (R$)');
+  document.getElementById('field-date-label').textContent =
+    isRetirada ? 'Data alvo' : (isRecorrente ? 'A partir de' : 'Quando');
+  document.getElementById('field-allocated-group').style.display = isRetirada ? '' : 'none';
+  document.getElementById('field-end-date-group').style.display = isRecorrente ? '' : 'none';
+
+  const kind = FinanceModel.projectKind(tipoId);
+  document.getElementById('tipo-kind-hint').innerHTML =
+    `Classificação derivada: <span class="kind-badge ${kind}">${KIND_LABEL[kind]}</span> — sem campo extra para preencher (D3).`;
+
+  updatePMTPreview();
+}
+
 function renderTypeGrid() {
   const grid = document.getElementById('type-grid');
   grid.innerHTML = PROJECT_TYPES.map(t => `
@@ -1194,27 +1391,30 @@ function openModal(priority = null, projectId = null) {
     if (!p) return;
     document.getElementById('modal-project-title').textContent = 'Editar projeto';
     selectedType = p.project_type || 'outro';
+    selectedTipo = p.tipo || 'retirada_unica';
     document.getElementById('field-priority').value  = p.priority || 'Sonho';
     document.getElementById('field-name').value      = p.name || '';
     document.getElementById('field-target').value    = p.target_amount || '';
     document.getElementById('field-allocated').value = p.allocated_amount || 0;
     // target_date pode ser 'YYYY-MM-DD', precisa virar 'YYYY-MM' para input type=month
     document.getElementById('field-date').value      = (p.target_date || '').substring(0,7);
-    document.getElementById('field-rate').value      = p.monthly_rate != null ? p.monthly_rate : 0.5;
+    document.getElementById('field-end-date').value  = (p.end_date || '').substring(0,7);
   } else {
     // Novo
     document.getElementById('modal-project-title').textContent = 'Novo projeto';
     selectedType = 'viagem';
+    selectedTipo = 'retirada_unica';
     document.getElementById('field-priority').value  = priority || 'Sonho';
     document.getElementById('field-name').value      = '';
     document.getElementById('field-target').value    = '';
     document.getElementById('field-allocated').value = 0;
     document.getElementById('field-date').value      = '';
-    document.getElementById('field-rate').value      = 0.5;
+    document.getElementById('field-end-date').value  = '';
   }
 
+  renderTipoGrid();
   renderTypeGrid();
-  updatePMTPreview();
+  selectTipo(selectedTipo); // aplica visibilidade condicional + preview
   modal.classList.add('open');
   setTimeout(() => document.getElementById('field-name').focus(), 100);
 }
@@ -1231,11 +1431,30 @@ function updatePMTPreview() {
   const target    = parseFloat(document.getElementById('field-target').value)    || 0;
   const allocated = parseFloat(document.getElementById('field-allocated').value) || 0;
   const dateVal   = document.getElementById('field-date').value;
-  const ratePct   = parseFloat(document.getElementById('field-rate').value)      || 0;
+  const endVal    = document.getElementById('field-end-date').value;
 
   const preview = document.getElementById('pmt-preview');
   const label   = document.getElementById('pmt-preview-label');
   const amount  = document.getElementById('pmt-preview-value');
+
+  /* Tipos sem acumulação mensal: preview mostra o efeito no plano, não um PMT */
+  if (selectedTipo === 'aporte_extra') {
+    label.textContent  = 'Entra no pool de independência';
+    amount.textContent = target && dateVal ? `${fmtBRL(target)} em ${fmtMonth(dateVal)}` : '—';
+    preview.className  = 'pmt-preview';
+    return;
+  }
+  if (selectedTipo === 'despesa_recorrente' || selectedTipo === 'receita_recorrente') {
+    const sign = selectedTipo === 'despesa_recorrente' ? '−' : '+';
+    label.textContent = selectedTipo === 'despesa_recorrente'
+      ? 'Reduz o fluxo mensal do plano a partir da data'
+      : 'Aumenta o fluxo mensal do plano a partir da data';
+    amount.textContent = target && dateVal
+      ? `${sign} ${fmtBRL(target)}/mês desde ${fmtMonth(dateVal)}${endVal ? ` até ${fmtMonth(endVal)}` : ''}`
+      : '—';
+    preview.className = 'pmt-preview';
+    return;
+  }
 
   if (!target || !dateVal) {
     label.textContent  = 'Preencha o valor alvo e a data para calcular';
@@ -1244,7 +1463,7 @@ function updatePMTPreview() {
     return;
   }
 
-  const r = calcPMT(target, allocated, dateVal, ratePct);
+  const r = calcPMT(target, allocated, dateVal);
 
   if (r.done) {
     label.textContent  = '✅ Objetivo já atingido!';
@@ -1265,7 +1484,8 @@ function updatePMTPreview() {
     return;
   }
 
-  label.textContent  = `Aporte mensal estimado (${r.months} meses · ${ratePct}%/mês)`;
+  const ratePctMonth = (poolMonthlyRate * 100).toFixed(2).replace('.', ',');
+  label.textContent  = `Aporte mensal estimado (${r.months} meses · taxa do pool ${ratePctMonth}%/mês)`;
   amount.textContent = fmtBRL(r.pmt);
   preview.className  = 'pmt-preview';
 }
@@ -1277,14 +1497,17 @@ async function saveProject() {
   const name      = document.getElementById('field-name').value.trim();
   const priority  = document.getElementById('field-priority').value;
   const target    = parseFloat(document.getElementById('field-target').value)    || 0;
-  const allocated = parseFloat(document.getElementById('field-allocated').value) || 0;
-  const dateVal   = document.getElementById('field-date').value;   // YYYY-MM
-  const ratePct   = parseFloat(document.getElementById('field-rate').value)      || 0;
+  const isRetirada   = selectedTipo === 'retirada_unica';
+  const isRecorrente = selectedTipo === 'despesa_recorrente' || selectedTipo === 'receita_recorrente';
+  const allocated = isRetirada ? (parseFloat(document.getElementById('field-allocated').value) || 0) : 0;
+  const dateVal   = document.getElementById('field-date').value;      // YYYY-MM
+  const endVal    = document.getElementById('field-end-date').value;  // YYYY-MM (só recorrentes)
 
   // Validações
   if (!name)   { showToast('Informe o nome do projeto', 'error'); return; }
-  if (!target) { showToast('Informe o valor alvo', 'error'); return; }
-  if (!dateVal){ showToast('Informe a data alvo', 'error'); return; }
+  if (!target) { showToast(isRecorrente ? 'Informe o valor mensal' : 'Informe o valor', 'error'); return; }
+  if (!dateVal){ showToast(isRetirada ? 'Informe a data alvo' : 'Informe a data', 'error'); return; }
+  if (isRecorrente && endVal && endVal < dateVal) { showToast('A data final não pode ser antes do início', 'error'); return; }
 
   // Converter YYYY-MM para YYYY-MM-01 (primeiro dia do mês) para salvar no banco
   const targetDate = dateVal + '-01';
@@ -1296,12 +1519,13 @@ async function saveProject() {
   const payload = {
     household_id:     householdId,
     name,
+    tipo:             selectedTipo,
     project_type:     selectedType,
     priority,
     target_amount:    target,
     allocated_amount: allocated,
     target_date:      targetDate,
-    monthly_rate:     ratePct,
+    end_date:         isRecorrente && endVal ? endVal + '-01' : null,
     is_active:        true,
   };
 
@@ -1436,8 +1660,8 @@ function bindEvents() {
   // Modal — salvar
   document.getElementById('modal-project-save').addEventListener('click', saveProject);
 
-  // PMT em tempo real
-  ['field-target','field-allocated','field-date','field-rate'].forEach(id => {
+  // PMT em tempo real (a taxa vem do pool — sem campo de taxa por projeto)
+  ['field-target','field-allocated','field-date','field-end-date'].forEach(id => {
     document.getElementById(id).addEventListener('input', updatePMTPreview);
   });
 
