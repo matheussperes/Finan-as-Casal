@@ -464,7 +464,15 @@
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       margin-bottom: 8px;
+      cursor: pointer;
+      transition: all var(--transition);
+      width: 100%;
+      text-align: left;
+      background: var(--surface);
+      font: inherit;
+      color: inherit;
     }
+    .invoice-row:hover { border-color: var(--emerald-300); background: var(--slate-50); }
     .invoice-row:last-child { margin-bottom: 0; }
     .invoice-row .inv-period { font-weight: 600; font-size: .8438rem; color: var(--text-primary); min-width: 130px; }
     .invoice-row .inv-info { flex: 1; font-size: .75rem; color: var(--text-muted); }
@@ -1557,6 +1565,11 @@
     }).join('');
   }
 
+  /* LAN-02 — ticket de fatura clicável: leva ao detalhe do cartão (PAT-06) já naquela fatura */
+  function goToCardDetail(cardId, period) {
+    window.location.href = `patrimonio.html?view=card&cardId=${encodeURIComponent(cardId)}&period=${encodeURIComponent(period)}`;
+  }
+
   /* ── Modal lista de faturas ── */
   function openInvoicesModal() {
     renderInvoicesList();
@@ -1584,13 +1597,13 @@
             const remaining = total - paid;
             const canPay = inv.status === 'closed' && remaining > 0.004;
             return `
-              <div class="invoice-row">
+              <div class="invoice-row" onclick="goToCardDetail('${card.id}', '${inv.period}')" role="button" tabindex="0" title="Ver detalhe do cartão nesta fatura">
                 <span class="inv-period">${periodLabel(inv.period)}</span>
                 <span class="badge ${STATUS_BADGE[inv.status] || 'badge-slate'}">${STATUS_LABEL[inv.status] || inv.status}</span>
                 <span class="inv-info">
                   Total ${fmtBRL(total)}${paid > 0 ? ` · Pago ${fmtBRL(paid)} · Restante ${fmtBRL(remaining)}` : ''} · Vence ${fmtDate(inv.due_date)}
                 </span>
-                ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="openPayModal('${inv.id}')">Pagar</button>` : ''}
+                ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); openPayModal('${inv.id}')">Pagar</button>` : ''}
               </div>`;
           }).join('');
       return `

@@ -317,6 +317,46 @@
       .modal-form-grid { grid-template-columns: 1fr; }
       .modal-form-grid .full { grid-column: 1; }
     }
+
+    /* ─── Link dentro do card Financeiro (atalho p/ PAT-07) ─── */
+    .metric-link {
+      display: inline-block;
+      font-size: .6875rem;
+      font-weight: 600;
+      color: var(--primary);
+      margin-top: 4px;
+      cursor: pointer;
+    }
+    .metric-link:hover { text-decoration: underline; }
+
+    /* ─── Sub-abas (Lançamentos/Investimentos na conta; abas do cartão) ─── */
+    .subtabs-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--surface-alt);
+      border-radius: var(--radius-lg);
+      padding: 4px;
+      margin-bottom: 16px;
+      width: fit-content;
+    }
+    .subtab-btn {
+      padding: 8px 14px;
+      border-radius: var(--radius-md);
+      font-size: .8125rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+    .subtab-btn:hover { color: var(--text-primary); }
+    .subtab-btn.active { background: var(--surface); color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+
+    /* ─── Cartão vinculado clicável (PAT-06 a partir do PAT-05) ─── */
+    .cc-widget-btn { cursor: pointer; text-align: left; width: 100%; border: none; font: inherit; transition: transform var(--transition); }
+    .cc-widget-btn:hover { transform: translateY(-2px); }
+
+    .position-row-sub2 { font-size: .75rem; color: var(--text-muted); margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -517,24 +557,113 @@
 
         <div class="cc-widgets" id="detail-cards"></div>
 
+        <!-- PAT-05 — sub-abas Lançamentos / Investimentos -->
+        <div class="subtabs-bar" id="detail-subtabs">
+          <button class="subtab-btn active" id="subtab-lancamentos" onclick="setDetailSubtab('lancamentos')">Lançamentos</button>
+          <button class="subtab-btn" id="subtab-investimentos" onclick="setDetailSubtab('investimentos')">Investimentos</button>
+        </div>
+
+        <div id="detail-lancamentos-panel">
+          <div class="table-card">
+            <div class="table-header-row">
+              <span class="table-count" id="detail-count">—</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:90px">Data</th>
+                  <th>Descrição</th>
+                  <th style="width:160px">Pagamento</th>
+                  <th style="width:130px;text-align:right">Valor</th>
+                </tr>
+              </thead>
+              <tbody id="detail-tbody"></tbody>
+            </table>
+            <div id="detail-empty" class="empty-table" style="display:none">
+              Nenhum lançamento nesta conta neste mês.
+            </div>
+          </div>
+        </div>
+
+        <div id="detail-investimentos-panel" style="display:none">
+          <div class="panel-section">
+            <div class="panel-section-header">
+              <span class="panel-section-title">Investimentos nesta conta</span>
+            </div>
+            <div class="panel-list" id="detail-positions-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ DETALHE DO CARTÃO (PAT-06) ═══ -->
+      <div id="card-detail-view" style="display:none">
+        <div class="detail-header">
+          <button class="btn-back" id="btn-back-card">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m15 18-6-6 6-6"/>
+            </svg>
+            Voltar
+          </button>
+          <div>
+            <h1 style="font-size:1.25rem;font-weight:800;color:var(--text-primary)" id="card-detail-name">—</h1>
+            <p style="font-size:.8125rem;color:var(--text-muted)" id="card-detail-sub">—</p>
+          </div>
+        </div>
+
+        <div class="subtabs-bar" id="card-detail-tabs">
+          <button class="subtab-btn active" onclick="setCardDetailTab('atual')">Fatura atual</button>
+          <button class="subtab-btn" onclick="setCardDetailTab('gasto')">Total gasto / dívida</button>
+          <button class="subtab-btn" onclick="setCardDetailTab('limite')">Limite restante</button>
+        </div>
+
+        <div class="kpi-grid-3" id="card-detail-stats"></div>
+
         <div class="table-card">
           <div class="table-header-row">
-            <span class="table-count" id="detail-count">—</span>
+            <span class="table-count" id="card-detail-count">—</span>
+            <select class="input select" id="card-detail-period-filter" style="width:auto;max-width:220px"></select>
           </div>
           <table>
             <thead>
               <tr>
                 <th style="width:90px">Data</th>
                 <th>Descrição</th>
-                <th style="width:160px">Pagamento</th>
+                <th style="width:140px">Fatura</th>
                 <th style="width:130px;text-align:right">Valor</th>
               </tr>
             </thead>
-            <tbody id="detail-tbody"></tbody>
+            <tbody id="card-detail-tbody"></tbody>
           </table>
-          <div id="detail-empty" class="empty-table" style="display:none">
-            Nenhum lançamento nesta conta neste mês.
+          <div id="card-detail-empty" class="empty-table" style="display:none">
+            Nenhum lançamento neste cartão.
           </div>
+        </div>
+      </div>
+
+      <!-- ═══ INVESTIMENTOS — VISÃO GERAL (PAT-07) ═══ -->
+      <div id="investments-view" style="display:none">
+        <div class="detail-header">
+          <button class="btn-back" id="btn-back-investments">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m15 18-6-6 6-6"/>
+            </svg>
+            Voltar
+          </button>
+          <div>
+            <h1 style="font-size:1.25rem;font-weight:800;color:var(--text-primary)">Investimentos</h1>
+            <p style="font-size:.8125rem;color:var(--text-muted)" id="investments-sub">—</p>
+          </div>
+        </div>
+
+        <div class="kpi-grid-3" id="investments-stats"></div>
+
+        <div class="panel-section">
+          <div class="panel-section-header">
+            <span class="panel-section-title">Posições</span>
+          </div>
+          <div class="panel-list" id="investments-positions-list"></div>
         </div>
       </div>
 
@@ -729,6 +858,52 @@
   </div>
 </div>
 
+<!-- ═══ MODAL EDITAR POSIÇÃO DE INVESTIMENTO (PAT-07) ═══ -->
+<div class="modal-overlay" id="modal-position">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-position-title">Editar posição</span>
+      <button class="btn-ghost btn-icon modal-close" id="modal-position-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-form-grid">
+      <div class="form-group full">
+        <label class="form-label">Nome</label>
+        <input class="input" type="text" id="position-name" placeholder="Ex: CDB Banco X, Tesouro Selic…" maxlength="80" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <input class="input" type="text" id="position-tipo" placeholder="Ex: CDB, Tesouro…" maxlength="40" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Vencimento <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <input class="input" type="date" id="position-vencimento" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Rendimento mensal (%) <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <input class="input" type="number" id="position-taxa" placeholder="Ex: 0,90" min="0" step="0.01" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Já rendeu (R$) <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <input class="input" type="number" id="position-rendimento" placeholder="0,00" min="0" step="0.01" />
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Valor aplicado</label>
+        <div class="input" id="position-valor-aplicado-readonly" style="background:var(--slate-50);color:var(--text-secondary)">—</div>
+        <span class="form-hint">Só muda por transferência em Lançamentos — não é editável aqui.</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:24px">
+      <button class="btn btn-secondary btn-full" id="modal-position-cancel">Cancelar</button>
+      <button class="btn btn-primary btn-full" id="modal-position-save">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 
 <script>
@@ -756,6 +931,11 @@
   let viewingAssetId     = null;
   let viewingLoanId      = null;
   let pendingConfirmAction = null;
+  let detailSubtab       = 'lancamentos'; // 'lancamentos' | 'investimentos' (PAT-05)
+  let editingPositionId  = null;          // posição sendo editada (PAT-07)
+  let cardDetailId       = null;          // cartão aberto no PAT-06
+  let cardDetailTab      = 'atual';       // 'atual' | 'gasto' | 'limite'
+  let cardDetailPeriod   = null;          // period (YYYY-MM) pré-selecionado via deep-link (LAN-02), ou null = todos
   /* Normalizado para o dia 1: setMonth() em dia 29-31 pularia meses */
   let detailDate         = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
@@ -978,6 +1158,16 @@
     renderTabs();
     renderSummary();
     renderExpansion();
+
+    /* Deep-link (LAN-02): patrimonio.html?view=card&cardId=X&period=Y abre
+       direto o detalhe do cartão naquela fatura; ?view=investments abre a
+       visão geral de investimentos (PAT-07). */
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('view') === 'card' && params.get('cardId')) {
+      openCardDetail(params.get('cardId'), params.get('period') || null);
+    } else if (params.get('view') === 'investments') {
+      openInvestmentsView();
+    }
   })();
 
   /* ── ABAS (ordem: quem logou primeiro → parceiro → conjuntas) ── */
@@ -1041,7 +1231,7 @@
     const dividasTotal = loansOutstandingTotal + openInvoicesTotal;
 
     document.getElementById('summary-grid').innerHTML = `
-      <button class="summary-card ${activeCard === 'financeiro' ? 'active' : ''}" onclick="setActiveCard('financeiro')">
+      <div class="summary-card ${activeCard === 'financeiro' ? 'active' : ''}" onclick="setActiveCard('financeiro')" role="button" tabindex="0">
         <div class="summary-card-title">💰 Financeiro</div>
         <div class="summary-metric">
           <div class="summary-metric-label">Saldo em contas</div>
@@ -1052,24 +1242,25 @@
           <div class="summary-metric-label">Saldo em investimentos</div>
           <div class="summary-metric-value">${fmtBRL(totalInvested)}</div>
           <div class="summary-metric-sub">${accountsWithInvestment} conta${accountsWithInvestment !== 1 ? 's' : ''}</div>
+          <span class="metric-link" onclick="event.stopPropagation(); openInvestmentsView();">Ver detalhes (PAT-07) →</span>
         </div>
-      </button>
-      <button class="summary-card ${activeCard === 'bens' ? 'active' : ''}" onclick="setActiveCard('bens')">
+      </div>
+      <div class="summary-card ${activeCard === 'bens' ? 'active' : ''}" onclick="setActiveCard('bens')" role="button" tabindex="0">
         <div class="summary-card-title">🏠 Bens Materiais</div>
         <div class="summary-metric">
           <div class="summary-metric-label">Total (valor líquido)</div>
           <div class="summary-metric-value">${fmtBRL(assetsTotal)}</div>
           <div class="summary-metric-sub">${assets.length} be${assets.length !== 1 ? 'ns' : 'm'}</div>
         </div>
-      </button>
-      <button class="summary-card ${activeCard === 'dividas' ? 'active' : ''}" onclick="setActiveCard('dividas')">
+      </div>
+      <div class="summary-card ${activeCard === 'dividas' ? 'active' : ''}" onclick="setActiveCard('dividas')" role="button" tabindex="0">
         <div class="summary-card-title">⚠️ Dívidas</div>
         <div class="summary-metric">
           <div class="summary-metric-label">Total</div>
           <div class="summary-metric-value">${fmtBRL(dividasTotal)}</div>
           <div class="summary-metric-sub">${fmtBRL(loansOutstandingTotal)} financiamentos · ${fmtBRL(openInvoicesTotal)} faturas</div>
         </div>
-      </button>
+      </div>
     `;
   }
 
@@ -1176,7 +1367,7 @@
     const cardRows = cards.length === 0
       ? `<div class="panel-empty">Nenhum cartão nesta aba.</div>`
       : cards.map(c => `
-          <button class="panel-row" onclick="openDetail('${c.account_id}')">
+          <button class="panel-row" onclick="openCardDetail('${c.id}')">
             <div class="panel-row-main">
               <div class="panel-row-name">💳 ${escHtml(c.name)}</div>
               <div class="panel-row-sub">Total gasto ${fmtBRL(cardTotalSpent(c))} · Fatura atual ${fmtBRL(cardCurrentInvoiceTotal(c))}</div>
@@ -1193,7 +1384,10 @@
   function openDetail(accountId) {
     detailAccountId = accountId;
     detailDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    setDetailSubtab('lancamentos');
     document.getElementById('overview-view').style.display = 'none';
+    document.getElementById('investments-view').style.display = 'none';
+    document.getElementById('card-detail-view').style.display = 'none';
     document.getElementById('detail-view').style.display = '';
     renderDetail();
   }
@@ -1257,7 +1451,7 @@
       const barClass = pct >= 100 ? 'over' : (pct >= 75 ? 'warn' : '');
       const unpaidClosed = cardUnpaidClosed(c);
       return `
-        <div class="cc-widget">
+        <button class="cc-widget cc-widget-btn" onclick="openCardDetail('${c.id}')">
           <div class="ccw-name">💳 ${escHtml(c.name)}</div>
           <div class="ccw-row"><span>Fatura atual</span><strong>${fmtBRL(cardCurrentInvoiceTotal(c))}</strong></div>
           ${unpaidClosed > 0.004 ? `<div class="ccw-row"><span>Fechada a pagar</span><strong style="color:#fb7185">${fmtBRL(unpaidClosed)}</strong></div>` : ''}
@@ -1265,7 +1459,7 @@
           <div class="ccw-row"><span>Limite</span><strong>${fmtBRL(limit)}</strong></div>
           <div class="ccw-bar"><div class="ccw-bar-fill ${barClass}" style="width:${pct}%"></div></div>
           <div class="ccw-row" style="margin-top:8px"><span>Fecha dia ${c.closing_day} · vence dia ${c.due_day}</span></div>
-        </div>`;
+        </button>`;
     }).join('');
 
     /* Tabela do mês */
@@ -1298,6 +1492,337 @@
               ${isIncome ? '+' : '−'} ${fmtBRL(t.amount)}
             </span>
           </td>
+        </tr>`;
+    }).join('');
+
+    renderDetailPositions(acc);
+  }
+
+  /* ── PAT-05 — sub-abas Lançamentos / Investimentos ── */
+  function setDetailSubtab(tab) {
+    detailSubtab = tab;
+    document.getElementById('subtab-lancamentos').classList.toggle('active', tab === 'lancamentos');
+    document.getElementById('subtab-investimentos').classList.toggle('active', tab === 'investimentos');
+    document.getElementById('detail-lancamentos-panel').style.display = tab === 'lancamentos' ? '' : 'none';
+    document.getElementById('detail-investimentos-panel').style.display = tab === 'investimentos' ? '' : 'none';
+  }
+
+  function renderDetailPositions(acc) {
+    const positions = allInvestmentPositions.filter(p => p.account_id === acc.id);
+    document.getElementById('detail-positions-list').innerHTML = renderPositionRows(positions, { showAccount: false });
+  }
+
+  /* ══════════════════════════════════════════════
+     POSIÇÕES DE INVESTIMENTO (PAT-07 / D1) — lista compartilhada
+     entre a aba da conta (PAT-05) e a visão geral (PAT-07).
+     ══════════════════════════════════════════════ */
+  function renderPositionRows(positions, { showAccount } = { showAccount: true }) {
+    if (positions.length === 0) {
+      return `<div class="panel-empty">Nenhuma posição de investimento aqui ainda.</div>`;
+    }
+    return positions.map(p => {
+      const projecao = FinanceModel.investmentProjection({
+        valorAplicado: p.valor_aplicado,
+        rendimentoAcumulado: p.rendimento_acumulado,
+        taxaMensal: p.taxa,
+        vencimento: p.vencimento,
+        todayISO: todayISO(),
+      });
+      const subParts = [];
+      if (showAccount) {
+        const acc = allAccounts.find(a => a.id === p.account_id);
+        if (acc) subParts.push(escHtml(acc.name));
+      }
+      if (p.tipo) subParts.push(escHtml(p.tipo));
+      subParts.push(p.vencimento ? `vence ${fmtDate(p.vencimento)}` : 'sem vencimento (projeção 12m)');
+      if (p.taxa) {
+        const monthly = (Number(p.taxa) * 100).toFixed(2).replace('.', ',');
+        const annual = (FinanceModel.annualizedRate(p.taxa) * 100).toFixed(2).replace('.', ',');
+        subParts.push(`${monthly}% a.m. (${annual}% a.a.)`);
+      }
+      return `
+        <button class="panel-row" style="flex-direction:column;align-items:stretch;gap:4px" onclick="openPositionModal('${p.id}')">
+          <div style="display:flex;justify-content:space-between;width:100%;gap:14px">
+            <div class="panel-row-main">
+              <div class="panel-row-name">${escHtml(p.name)}${p.is_reserve ? ' <span class="badge badge-blue">reserva</span>' : ''}</div>
+              <div class="panel-row-sub">${subParts.join(' · ')}</div>
+            </div>
+            <div class="panel-row-value">${fmtBRL(p.valor_aplicado)}</div>
+          </div>
+          <div class="position-row-sub2">Rendeu ${fmtBRL(p.rendimento_acumulado)} até agora · projeção: ${fmtBRL(projecao)}</div>
+        </button>`;
+    }).join('');
+  }
+
+  function openPositionModal(id) {
+    editingPositionId = id;
+    const p = allInvestmentPositions.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById('modal-position-title').textContent = p.name;
+    document.getElementById('position-name').value = p.name || '';
+    document.getElementById('position-tipo').value = p.tipo || '';
+    document.getElementById('position-vencimento').value = p.vencimento || '';
+    document.getElementById('position-taxa').value = p.taxa != null ? Number(p.taxa) * 100 : '';
+    document.getElementById('position-rendimento').value = p.rendimento_acumulado ?? '';
+    document.getElementById('position-valor-aplicado-readonly').textContent = fmtBRL(p.valor_aplicado);
+    document.getElementById('modal-position').classList.add('open');
+  }
+  function closePositionModal() {
+    document.getElementById('modal-position').classList.remove('open');
+    editingPositionId = null;
+  }
+
+  async function savePosition() {
+    const name = document.getElementById('position-name').value.trim();
+    const tipo = document.getElementById('position-tipo').value.trim();
+    const vencimento = document.getElementById('position-vencimento').value || null;
+    const taxaPct = parseFloat(document.getElementById('position-taxa').value);
+    const rendimento = parseFloat(document.getElementById('position-rendimento').value);
+
+    if (!name) { toast('Informe o nome da posição.', 'error'); return; }
+
+    const payload = {
+      name,
+      tipo: tipo || null,
+      vencimento,
+      taxa: isNaN(taxaPct) ? 0 : taxaPct / 100,
+      rendimento_acumulado: isNaN(rendimento) ? 0 : rendimento,
+    };
+
+    const btn = document.getElementById('modal-position-save');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+    const { error } = await _supabase.from('investment_positions')
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq('id', editingPositionId).eq('household_id', householdId);
+    btn.classList.remove('btn-loading'); btn.disabled = false;
+
+    if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return; }
+
+    const idx = allInvestmentPositions.findIndex(p => p.id === editingPositionId);
+    if (idx >= 0) allInvestmentPositions[idx] = { ...allInvestmentPositions[idx], ...payload };
+
+    toast('Posição atualizada!', 'success');
+    closePositionModal();
+    renderSummary();
+    if (detailAccountId) renderDetail();
+    if (document.getElementById('investments-view').style.display !== 'none') renderInvestmentsView();
+  }
+
+  document.getElementById('modal-position-close').addEventListener('click', closePositionModal);
+  document.getElementById('modal-position-cancel').addEventListener('click', closePositionModal);
+  document.getElementById('modal-position-save').addEventListener('click', savePosition);
+  document.getElementById('modal-position').addEventListener('click', (e) => { if (e.target === e.currentTarget) closePositionModal(); });
+
+  /* ══════════════════════════════════════════════
+     PAT-07 — INVESTIMENTOS (visão geral, household-wide)
+     ══════════════════════════════════════════════ */
+  function openInvestmentsView() {
+    document.getElementById('overview-view').style.display = 'none';
+    document.getElementById('detail-view').style.display = 'none';
+    document.getElementById('card-detail-view').style.display = 'none';
+    document.getElementById('investments-view').style.display = '';
+    renderInvestmentsView();
+  }
+
+  document.getElementById('btn-back-investments').addEventListener('click', () => {
+    document.getElementById('investments-view').style.display = 'none';
+    document.getElementById('overview-view').style.display = '';
+    renderSummary();
+    renderExpansion();
+  });
+
+  function renderInvestmentsView() {
+    const accounts = allAccounts.filter(a => accountBucket(a) === activeTab);
+    const positions = allInvestmentPositions.filter(p => accounts.some(a => a.id === p.account_id));
+
+    const totalAplicado = positions.reduce((s, p) => s + Number(p.valor_aplicado || 0), 0);
+    const totalRendimento = positions.reduce((s, p) => s + Number(p.rendimento_acumulado || 0), 0);
+    const totalProjecao = positions.reduce((s, p) => s + FinanceModel.investmentProjection({
+      valorAplicado: p.valor_aplicado,
+      rendimentoAcumulado: p.rendimento_acumulado,
+      taxaMensal: p.taxa,
+      vencimento: p.vencimento,
+      todayISO: todayISO(),
+    }), 0);
+
+    document.getElementById('investments-sub').textContent =
+      `${positions.length} posiç${positions.length !== 1 ? 'ões' : 'ão'} nesta aba`;
+
+    document.getElementById('investments-stats').innerHTML = `
+      <div class="kpi-card-v2 balance">
+        <div class="kpi-label-v2">Valor investido</div>
+        <div class="kpi-value-v2">${fmtBRL(totalAplicado)}</div>
+        <div class="kpi-sub">${positions.length} posiç${positions.length !== 1 ? 'ões' : 'ão'}</div>
+      </div>
+      <div class="kpi-card-v2 income">
+        <div class="kpi-label-v2">Rendimento acumulado</div>
+        <div class="kpi-value-v2">${fmtBRL(totalRendimento)}</div>
+        <div class="kpi-sub">já rendido até agora</div>
+      </div>
+      <div class="kpi-card-v2 limit">
+        <div class="kpi-label-v2">Projeção</div>
+        <div class="kpi-value-v2">${fmtBRL(totalProjecao)}</div>
+        <div class="kpi-sub">no vencimento (ou 12 meses, sem vencimento)</div>
+      </div>
+    `;
+
+    document.getElementById('investments-positions-list').innerHTML = renderPositionRows(positions, { showAccount: true });
+  }
+
+  /* ══════════════════════════════════════════════
+     PAT-06 — DETALHE DO CARTÃO
+     ══════════════════════════════════════════════ */
+  function openCardDetail(cardId, period = null) {
+    cardDetailId = cardId;
+    cardDetailTab = 'atual';
+    cardDetailPeriod = period;
+    document.getElementById('overview-view').style.display = 'none';
+    document.getElementById('detail-view').style.display = 'none';
+    document.getElementById('investments-view').style.display = 'none';
+    document.getElementById('card-detail-view').style.display = '';
+    renderCardDetail();
+  }
+
+  document.getElementById('btn-back-card').addEventListener('click', () => {
+    document.getElementById('card-detail-view').style.display = 'none';
+    document.getElementById('overview-view').style.display = '';
+    renderSummary();
+    renderExpansion();
+  });
+
+  function setCardDetailTab(tab) {
+    cardDetailTab = tab;
+    renderCardDetail();
+  }
+
+  function renderCardDetail() {
+    const card = allCreditCards.find(c => c.id === cardDetailId);
+    if (!card) return;
+    const acc = allAccounts.find(a => a.id === card.account_id);
+
+    document.getElementById('card-detail-name').textContent = `💳 ${card.name}`;
+    document.getElementById('card-detail-sub').textContent = `Conta: ${acc?.name || '—'}`;
+
+    document.querySelectorAll('#card-detail-tabs .subtab-btn').forEach((btn, i) => {
+      const tabs = ['atual', 'gasto', 'limite'];
+      btn.classList.toggle('active', tabs[i] === cardDetailTab);
+    });
+
+    const limit = Number(card.credit_limit || 0);
+    const avail = cardAvailableLimit(card);
+    const used = limit - avail;
+    const pct = limit > 0 ? Math.min(100, Math.max(0, (used / limit) * 100)) : 0;
+
+    const cardInvoices = allInvoices.filter(i => i.credit_card_id === card.id).slice().sort((a, b) => b.period.localeCompare(a.period));
+    const currentPeriod = computeInvoicePeriod(card.closing_day, todayISO());
+    const currentInvoice = cardInvoices.find(i => i.period === currentPeriod);
+    const unpaidClosed = cardUnpaidClosed(card);
+
+    const statsEl = document.getElementById('card-detail-stats');
+    if (cardDetailTab === 'atual') {
+      const total = currentInvoice ? invoiceComputedTotal(currentInvoice.id) : 0;
+      statsEl.innerHTML = `
+        <div class="kpi-card-v2 balance">
+          <div class="kpi-label-v2">Fatura atual</div>
+          <div class="kpi-value-v2">${fmtBRL(total)}</div>
+          <div class="kpi-sub">${periodLabel(currentPeriod)}</div>
+        </div>
+        <div class="kpi-card-v2 income">
+          <div class="kpi-label-v2">Vencimento</div>
+          <div class="kpi-value-v2" style="font-size:1.125rem">${currentInvoice ? fmtDate(currentInvoice.due_date) : '—'}</div>
+          <div class="kpi-sub">fecha dia ${card.closing_day} · vence dia ${card.due_day}</div>
+        </div>
+        <div class="kpi-card-v2 expense">
+          <div class="kpi-label-v2">Fechadas a pagar</div>
+          <div class="kpi-value-v2">${fmtBRL(unpaidClosed)}</div>
+          <div class="kpi-sub">${unpaidClosed > 0.004 ? 'faturas fechadas ainda não pagas' : 'tudo em dia'}</div>
+        </div>`;
+    } else if (cardDetailTab === 'gasto') {
+      const openTotal = cardOpenInvoiceTotal(card);
+      statsEl.innerHTML = `
+        <div class="kpi-card-v2 balance">
+          <div class="kpi-label-v2">Total gasto (vitalício)</div>
+          <div class="kpi-value-v2">${fmtBRL(cardTotalSpent(card))}</div>
+          <div class="kpi-sub">soma de todas as compras já feitas</div>
+        </div>
+        <div class="kpi-card-v2 expense">
+          <div class="kpi-label-v2">Dívida em aberto</div>
+          <div class="kpi-value-v2">${fmtBRL(openTotal)}</div>
+          <div class="kpi-sub">faturas ainda não pagas (inclui parcelas futuras)</div>
+        </div>
+        <div class="kpi-card-v2 income">
+          <div class="kpi-label-v2">Faturas fechadas a pagar</div>
+          <div class="kpi-value-v2">${fmtBRL(unpaidClosed)}</div>
+          <div class="kpi-sub">já fechou, ainda sem pagamento</div>
+        </div>`;
+    } else {
+      const barClass = pct >= 100 ? 'over' : (pct >= 75 ? 'warn' : '');
+      statsEl.innerHTML = `
+        <div class="kpi-card-v2 limit">
+          <div class="kpi-label-v2">Limite total</div>
+          <div class="kpi-value-v2">${fmtBRL(limit)}</div>
+        </div>
+        <div class="kpi-card-v2 expense">
+          <div class="kpi-label-v2">Usado</div>
+          <div class="kpi-value-v2">${fmtBRL(used)}</div>
+          <div class="kpi-sub"><div class="ccw-bar" style="background:var(--slate-100);margin-top:6px"><div class="ccw-bar-fill ${barClass}" style="width:${pct}%"></div></div></div>
+        </div>
+        <div class="kpi-card-v2 income">
+          <div class="kpi-label-v2">Disponível</div>
+          <div class="kpi-value-v2">${fmtBRL(avail)}</div>
+        </div>`;
+    }
+
+    /* Filtro de fatura (default: a fatura passada via deep-link — LAN-02 — senão "todos") */
+    const filterSel = document.getElementById('card-detail-period-filter');
+    const prevValue = filterSel.value;
+    filterSel.innerHTML = '<option value="">Todos os lançamentos</option>' +
+      cardInvoices.map(i => `<option value="${i.period}">${escHtml(periodLabel(i.period))}</option>`).join('');
+    if (cardDetailPeriod && cardInvoices.some(i => i.period === cardDetailPeriod)) {
+      filterSel.value = cardDetailPeriod;
+      cardDetailPeriod = null; // só pré-seleciona uma vez, na chegada via deep-link
+    } else if (prevValue) {
+      filterSel.value = prevValue;
+    }
+
+    renderCardDetailTransactions(card);
+  }
+
+  document.getElementById('card-detail-period-filter').addEventListener('change', () => {
+    const card = allCreditCards.find(c => c.id === cardDetailId);
+    if (card) renderCardDetailTransactions(card);
+  });
+
+  function renderCardDetailTransactions(card) {
+    const periodFilter = document.getElementById('card-detail-period-filter').value;
+    let txs = allTx.filter(t => t.credit_card_id === card.id);
+    if (periodFilter) {
+      const invoiceIdsForPeriod = allInvoices.filter(i => i.credit_card_id === card.id && i.period === periodFilter).map(i => i.id);
+      txs = txs.filter(t => invoiceIdsForPeriod.includes(t.invoice_id));
+    }
+    txs = txs.slice().sort((a, b) => b.date.localeCompare(a.date));
+
+    document.getElementById('card-detail-count').innerHTML =
+      `<strong>${txs.length}</strong> lançamento${txs.length !== 1 ? 's' : ''}${periodFilter ? ` — ${escHtml(periodLabel(periodFilter))}` : ''}`;
+
+    const tbody = document.getElementById('card-detail-tbody');
+    const empty = document.getElementById('card-detail-empty');
+    if (txs.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = txs.map(t => {
+      const inv = allInvoices.find(i => i.id === t.invoice_id);
+      return `
+        <tr class="${t.is_ignored ? 'tx-ignored' : ''}">
+          <td class="td-date">${fmtDate(t.date)}</td>
+          <td>
+            <div class="td-desc">${escHtml(t.description || '—')}</div>
+            ${t.establishment ? `<div class="td-desc-sub">${escHtml(t.establishment)}</div>` : ''}
+          </td>
+          <td style="font-size:.8125rem;color:var(--text-muted)">
+            ${inv ? escHtml(periodLabel(inv.period)) : '—'}${t.total_installments > 1 ? ` · ${t.installment_num}/${t.total_installments}` : ''}
+          </td>
+          <td><span class="td-amount expense">− ${fmtBRL(t.amount)}</span></td>
         </tr>`;
     }).join('');
   }

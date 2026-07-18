@@ -8,6 +8,9 @@ const {
   amortizationSchedule,
   outstandingLoanBalance,
   assetNetWorth,
+  monthsBetween,
+  annualizedRate,
+  investmentProjection,
 } = require('../js/finance-model.js');
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -166,4 +169,59 @@ test('assetNetWorth = valor de mercado − saldo devedor do financiamento vincul
   assert.equal(assetNetWorth(80000, 30000), 50000);
   assert.equal(assetNetWorth(80000, 0), 80000);
   assert.equal(assetNetWorth(80000, null), 80000);
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   PAT-07 — Detalhe de investimentos: projeção de valor
+   ══════════════════════════════════════════════════════════════════════ */
+test('monthsBetween conta meses inteiros e nunca é negativo', () => {
+  assert.equal(monthsBetween('2026-07-18', '2027-07-18'), 12);
+  assert.equal(monthsBetween('2026-07-18', '2026-10-18'), 3);
+  assert.equal(monthsBetween('2026-07-18', '2026-07-18'), 0);
+  assert.equal(monthsBetween('2026-07-18', '2026-01-01'), 0, 'data no passado vira 0, nunca negativo');
+});
+
+test('annualizedRate converte taxa mensal em anual equivalente (juros compostos)', () => {
+  assert.ok(Math.abs(annualizedRate(0.01) - 0.126825) < 0.0001);
+  assert.equal(annualizedRate(0), 0);
+});
+
+test('investmentProjection com vencimento: compõe valor atual pela taxa mensal até lá', () => {
+  const projecao = investmentProjection({
+    valorAplicado: 1000,
+    rendimentoAcumulado: 0,
+    taxaMensal: 0.01,
+    vencimento: '2027-07-18',
+    todayISO: '2026-07-18',
+  });
+  // 1000 * 1.01^12 ≈ 1126.83
+  assert.ok(Math.abs(projecao - 1126.83) < 0.01, `esperado ~1126.83, obtido ${projecao}`);
+});
+
+test('investmentProjection sem vencimento: projeta 12 meses à frente', () => {
+  const comVencimento = investmentProjection({
+    valorAplicado: 1000, rendimentoAcumulado: 0, taxaMensal: 0.01,
+    vencimento: '2027-07-18', todayISO: '2026-07-18',
+  });
+  const semVencimento = investmentProjection({
+    valorAplicado: 1000, rendimentoAcumulado: 0, taxaMensal: 0.01,
+    vencimento: null, todayISO: '2026-07-18',
+  });
+  assert.equal(semVencimento, comVencimento, '12 meses à frente deveria bater com o exemplo de vencimento em 1 ano');
+});
+
+test('investmentProjection soma o rendimento já acumulado antes de compor', () => {
+  const projecao = investmentProjection({
+    valorAplicado: 1000, rendimentoAcumulado: 200, taxaMensal: 0,
+    vencimento: '2027-07-18', todayISO: '2026-07-18',
+  });
+  assert.equal(projecao, 1200, 'taxa zero: projeção = valor atual, sem crescer');
+});
+
+test('investmentProjection com vencimento já vencido retorna o valor atual (sem meses a compor)', () => {
+  const projecao = investmentProjection({
+    valorAplicado: 1000, rendimentoAcumulado: 50, taxaMensal: 0.01,
+    vencimento: '2020-01-01', todayISO: '2026-07-18',
+  });
+  assert.equal(projecao, 1050);
 });

@@ -136,6 +136,46 @@
     return round2((Number(marketValue) || 0) - (Number(outstandingLoan) || 0));
   }
 
+  /* ══════════════════════════════════════════════════════════════════════
+     PAT-07 — Detalhe de investimentos (projeção de valor)
+     ══════════════════════════════════════════════════════════════════════ */
+
+  /**
+   * Meses inteiros entre duas datas ISO (YYYY-MM-DD), ignorando o dia do
+   * mês (aproximação por mês corrente — suficiente para uma projeção).
+   * Nunca retorna negativo (datas no passado viram 0).
+   */
+  function monthsBetween(fromISO, toISO) {
+    if (!fromISO || !toISO) return 0;
+    const [fy, fm] = fromISO.split('-').map(Number);
+    const [ty, tm] = toISO.split('-').map(Number);
+    const months = (ty - fy) * 12 + (tm - fm);
+    return Math.max(0, months);
+  }
+
+  /**
+   * Taxa anualizada equivalente a uma taxa mensal (juros compostos):
+   * (1+i)^12 - 1. Só para exibição ("% ao mês/ano") — não usada no cálculo
+   * da projeção, que sempre compõe mês a mês.
+   */
+  function annualizedRate(monthlyRate) {
+    return Math.pow(1 + (Number(monthlyRate) || 0), 12) - 1;
+  }
+
+  /**
+   * Projeção de valor (PAT-07): valor atual (aplicado + rendimento já
+   * acumulado) composto pela taxa mensal até o vencimento; sem vencimento,
+   * projeta 12 meses à frente. `todayISO` é injetado (não usa `new Date()`
+   * internamente) para o cálculo ser determinístico e testável.
+   */
+  function investmentProjection({ valorAplicado, rendimentoAcumulado, taxaMensal, vencimento, todayISO }) {
+    const currentTotal = (Number(valorAplicado) || 0) + (Number(rendimentoAcumulado) || 0);
+    const months = vencimento ? monthsBetween(todayISO, vencimento) : 12;
+    if (months <= 0) return round2(currentTotal);
+    const rate = Number(taxaMensal) || 0;
+    return round2(currentTotal * Math.pow(1 + rate, months));
+  }
+
   return {
     PROTECTED_CATEGORY_NAMES,
     FALLBACK_CATEGORY_NAME,
@@ -148,5 +188,8 @@
     amortizationSchedule,
     outstandingLoanBalance,
     assetNetWorth,
+    monthsBetween,
+    annualizedRate,
+    investmentProjection,
   };
 });

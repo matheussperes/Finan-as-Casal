@@ -302,3 +302,54 @@ depende do modelo de categorias/investimento que o Sprint 2 introduziu (`categor
 - `patrimonio.html` — os 3 cards de resumo, os painéis de expansão, cadastro/ticket de bem, cadastro/
   ticket de financiamento (com pré-visualização da parcela Price ao digitar) e a geração preguiçosa de
   parcelas.
+
+---
+
+## 10. Sprint 4 — Notas de implementação (telas de detalhe)
+
+Branch stackada sobre a do Sprint 3 (`claude/sprint-3-patrimonio-b85dcc`), pelo mesmo motivo dos
+sprints anteriores: PAT-05/06/07 dependem do modelo de contas/cartões/investimentos/financiamentos já
+existente, e nenhuma das branches anteriores estava mesclada em `main` quando este sprint começou.
+
+**O que foi construído (majoritariamente apresentação sobre o modelo já existente, como o próprio
+sprint descreveu):**
+
+1. **PAT-05 — aba "Investimentos" dentro do detalhe da conta.** A tela de detalhe da conta já existia
+   (de um trabalho anterior aos sprints deste PRD); ganhou uma sub-aba nova ("Lançamentos" /
+   "Investimentos") que lista as posições de investimento daquela conta especificamente — sempre
+   separado do saldo atual, nunca somado a ele (D1: saldo atual = só `accounts.balance` + movimentações
+   sem cartão; investido mora só na sua aba).
+
+2. **PAT-07 — projeção de valor de investimento.** Como não havia nenhuma forma de setar `taxa` ou
+   `rendimento_acumulado` de uma posição em nenhum sprint anterior (só nome/tipo/vencimento, na criação,
+   via transferência em Lançamentos), este sprint adicionou um modal de edição de posição (nome, tipo,
+   vencimento, taxa mensal, rendimento acumulado — `valor_aplicado` continua só de leitura, muda
+   somente por transferência). A "Projeção" pedida pelo PAT-07 (`js/finance-model.js#investmentProjection`)
+   compõe `valor_aplicado + rendimento_acumulado` pela taxa mensal até o vencimento (ou 12 meses, se a
+   posição não tiver vencimento) — mesma função usada tanto na aba da conta (PAT-05) quanto na visão
+   geral de investimentos, nova e household-wide (alcançada por um link "Ver detalhes" no card
+   Financeiro do Patrimônio).
+
+3. **PAT-06 — tela de detalhe do cartão.** Nova, com as 3 abas pedidas (Fatura atual / Total gasto e
+   dívida / Limite restante) e a lista de lançamentos do cartão abaixo, com um filtro opcional de
+   fatura. Alcançável de três lugares: linha do cartão na expansão de Dívidas, o widget do cartão dentro
+   do detalhe da conta (agora clicável), e via querystring (`?view=card&cardId=X&period=Y`).
+
+4. **LAN-02 — ticket de fatura clicável.** O ticket de cada fatura no modal "Faturas" de
+   `lancamentos.html` agora navega para `patrimonio.html?view=card&cardId=...&period=...`, abrindo
+   direto o detalhe do cartão (PAT-06) já com o filtro de lançamentos naquela fatura pré-selecionado.
+
+**Teste de navegação:** como o ambiente do agente não tem acesso à internet nem ao Supabase real, a
+navegação entre as 5 telas de `patrimonio.html` (visão geral, detalhe de conta, detalhe de cartão,
+investimentos, mais os 4 modais) e o link do ticket de fatura em `lancamentos.html` foi testada de
+ponta a ponta num Chromium headless local com um stub mínimo do cliente Supabase (dados fixos, sem
+rede) — cobrindo: abrir/fechar cada view, trocar de sub-aba e aba, os dois deep-links via querystring,
+e conferindo que os números calculados (parcela Price, saldo devedor, projeção de investimento, filtro
+de fatura) batem com o esperado. Sem erros de JS em nenhum passo.
+
+**Onde está o quê:**
+- `js/finance-model.js` — `monthsBetween`, `annualizedRate`, `investmentProjection`.
+- `tests/finance-model.test.js` — cobre a projeção com/sem vencimento, taxa zero, vencimento já passado.
+- `patrimonio.html` — sub-abas do detalhe da conta, modal de edição de posição, view "Investimentos"
+  (PAT-07), view "Detalhe do Cartão" (PAT-06), parsing de querystring no init.
+- `lancamentos.html` — ticket de fatura agora navega para o PAT-06 (LAN-02).
