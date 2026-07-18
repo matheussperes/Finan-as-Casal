@@ -3,13 +3,16 @@
 -- Implementa D2 (financiamentos e bens materiais) e a base de dados para
 -- PAT-01..04 (cards Financeiro / Bens Materiais / Dívidas).
 --
--- Depende do Sprint 2 (categories, investment_positions) — rode a migração
--- 20260717120000_sprint2_modelo_financeiro.sql ANTES desta.
+-- Depende do Sprint 2 (categories, investment_positions, user_household_ids())
+-- — rode a migração 20260717120000_sprint2_modelo_financeiro.sql ANTES desta.
 --
--- COMO APLICAR
--- Mesmo aviso do Sprint 2: sem Supabase CLI/service-role neste ambiente.
--- Cole este arquivo inteiro no SQL Editor do Supabase (projeto
--- vvgrnrvvdggosxkjkxaa) depois da migração do Sprint 2.
+-- STATUS: já aplicada em produção (projeto vvgrnrvvdggosxkjkxaa) em
+-- 2026-07-18, via MCP do Supabase. Fica versionada como registro/documentação
+-- e para reaplicar em outro ambiente — não precisa ser rodada de novo aqui.
+--
+-- RLS e updated_at seguem o padrão real do projeto (confirmado por
+-- introspecção via MCP do Supabase): uma única policy `for all` usando
+-- `public.user_household_ids()`, e trigger `update_updated_at()`.
 -- ════════════════════════════════════════════════════════════════════════
 
 -- ───────────────────────────────────────────────────────────────────────
@@ -38,21 +41,15 @@ create table if not exists loans (
 
 alter table loans enable row level security;
 
-drop policy if exists loans_select on loans;
-create policy loans_select on loans for select
-  using (household_id in (select household_id from members where user_id = auth.uid()));
+drop policy if exists loans_all on loans;
+create policy loans_all on loans for all
+  using (household_id in (select user_household_ids()))
+  with check (household_id in (select user_household_ids()));
 
-drop policy if exists loans_insert on loans;
-create policy loans_insert on loans for insert
-  with check (household_id in (select household_id from members where user_id = auth.uid()));
-
-drop policy if exists loans_update on loans;
-create policy loans_update on loans for update
-  using (household_id in (select household_id from members where user_id = auth.uid()));
-
-drop policy if exists loans_delete on loans;
-create policy loans_delete on loans for delete
-  using (household_id in (select household_id from members where user_id = auth.uid()));
+drop trigger if exists trg_loans_updated_at on loans;
+create trigger trg_loans_updated_at
+  before update on loans
+  for each row execute function update_updated_at();
 
 -- ───────────────────────────────────────────────────────────────────────
 -- 2. BENS MATERIAIS (D2) — valor líquido = valor_mercado − saldo_devedor
@@ -76,21 +73,15 @@ create unique index if not exists one_asset_per_loan on assets (loan_id) where (
 
 alter table assets enable row level security;
 
-drop policy if exists assets_select on assets;
-create policy assets_select on assets for select
-  using (household_id in (select household_id from members where user_id = auth.uid()));
+drop policy if exists assets_all on assets;
+create policy assets_all on assets for all
+  using (household_id in (select user_household_ids()))
+  with check (household_id in (select user_household_ids()));
 
-drop policy if exists assets_insert on assets;
-create policy assets_insert on assets for insert
-  with check (household_id in (select household_id from members where user_id = auth.uid()));
-
-drop policy if exists assets_update on assets;
-create policy assets_update on assets for update
-  using (household_id in (select household_id from members where user_id = auth.uid()));
-
-drop policy if exists assets_delete on assets;
-create policy assets_delete on assets for delete
-  using (household_id in (select household_id from members where user_id = auth.uid()));
+drop trigger if exists trg_assets_updated_at on assets;
+create trigger trg_assets_updated_at
+  before update on assets
+  for each row execute function update_updated_at();
 
 -- ───────────────────────────────────────────────────────────────────────
 -- 3. PARCELA COMO SAÍDA RECORRENTE — transactions ganha loan_id.
