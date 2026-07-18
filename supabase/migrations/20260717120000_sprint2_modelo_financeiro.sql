@@ -3,21 +3,27 @@
 -- Implementa D1 (investimento dentro da conta) e D4 (reserva de emergência)
 -- e a base de dados para ORC-01 (categorias editáveis).
 --
--- COMO APLICAR
--- Este projeto não tem Supabase CLI nem service-role configurados no
--- ambiente de execução do agente — não é possível rodar `supabase db push`
--- a partir daqui. Cole este arquivo inteiro no SQL Editor do painel do
--- Supabase (projeto vvgrnrvvdggosxkjkxaa) e rode uma vez.
+-- STATUS: já aplicada em produção (projeto vvgrnrvvdggosxkjkxaa) em
+-- 2026-07-18, via MCP do Supabase, depois de corrigida contra o schema
+-- real (ver commit "fix: corrige migrações Sprint 2/3 contra o schema real
+-- do Supabase"). Este arquivo fica versionado como registro/documentação e
+-- para reaplicar em outro ambiente (staging, outro projeto Supabase) — não
+-- precisa ser rodado de novo neste projeto.
 --
--- PREMISSAS (não confirmadas por introspecção do banco real — revise antes
--- de rodar em produção):
---   • Todas as tabelas existentes (households, members, accounts,
---     transactions, budget_plan, emergency_reserve, credit_cards, invoices)
---     usam chave primária `id uuid default gen_random_uuid()`.
---   • RLS já está habilitado nessas tabelas com uma policy no formato
---     "household_id in (select household_id from members where user_id =
---     auth.uid())". As policies novas abaixo replicam esse padrão — ajuste
---     se o seu padrão real for diferente.
+-- A v1 deste arquivo assumia nomes de coluna e um padrão de RLS que não
+-- batiam com o schema real e falhou ao rodar (rollback total, nada foi
+-- commitado). Corrigido após introspecção direta do banco:
+--   • RLS real: uma única policy `for all` por tabela, usando a função
+--     helper `public.user_household_ids()` (security definer, evita
+--     recursão de RLS via members) — não 4 policies com subquery inline.
+--   • `updated_at` é mantido por trigger (`update_updated_at()` /
+--     `handle_updated_at()`), não escrito à mão pelo app.
+--   • `emergency_reserve` real: `target_amount`, `current_amount`,
+--     `method` ('auto'|'manual'), `months_target` — não
+--     `target_months`/`current_balance` como a v1 deste arquivo assumia.
+--   • `transfer_to_investment` ganhou `set search_path = ''` (achado do
+--     advisor de segurança do Supabase) e referências totalmente
+--     qualificadas (`public.tabela`).
 -- ════════════════════════════════════════════════════════════════════════
 
 -- ───────────────────────────────────────────────────────────────────────
@@ -37,24 +43,15 @@ create table if not exists categories (
 
 alter table categories enable row level security;
 
-drop policy if exists categories_select on categories;
-create policy categories_select on categories for select
-  using (household_id in (select household_id from members where user_id = auth.uid()));
+drop policy if exists categories_all on categories;
+create policy categories_all on categories for all
+  using (household_id in (select user_household_ids()))
+  with check (household_id in (select user_household_ids()));
 
-drop policy if exists categories_insert on categories;
-create policy categories_insert on categories for insert
-  with check (household_id in (select household_id from members where user_id = auth.uid()));
-
-drop policy if exists categories_update on categories;
-create policy categories_update on categories for update
-  using (household_id in (select household_id from members where user_id = auth.uid()));
-
-drop policy if exists categories_delete on categories;
-create policy categories_delete on categories for delete
-  using (
-    household_id in (select household_id from members where user_id = auth.uid())
-    and is_protected = false
-  );
+drop trigger if exists trg_categories_updated_at on categories;
+create trigger trg_categories_updated_at
+  before update on categories
+  for each row execute function update_updated_at();
 
 -- Semeia as 9 classificações atuais como categorias padrão de cada household
 -- já existente, preservando o texto usado hoje em transactions/budget_plan.
@@ -104,21 +101,15 @@ create unique index if not exists one_reserve_position_per_household
 
 alter table investment_positions enable row level security;
 
-drop policy if exists investment_positions_select on investment_positions;
-create policy investment_positions_select on investment_positions for select
-  using (household_id in (select household_id from members where user_id = auth.uid()));
+drop policy if exists investment_positions_all on investment_positions;
+create policy investment_positions_all on investment_positions for all
+  using (household_id in (select user_household_ids()))
+  with check (household_id in (select user_household_ids()));
 
-drop policy if exists investment_positions_insert on investment_positions;
-create policy investment_positions_insert on investment_positions for insert
-  with check (household_id in (select household_id from members where user_id = auth.uid()));
-
-drop policy if exists investment_positions_update on investment_positions;
-create policy investment_positions_update on investment_positions for update
-  using (household_id in (select household_id from members where user_id = auth.uid()));
-
-drop policy if exists investment_positions_delete on investment_positions;
-create policy investment_positions_delete on investment_positions for delete
-  using (household_id in (select household_id from members where user_id = auth.uid()));
+drop trigger if exists trg_investment_positions_updated_at on investment_positions;
+create trigger trg_investment_positions_updated_at
+  before update on investment_positions
+  for each row execute function update_updated_at();
 
 -- ───────────────────────────────────────────────────────────────────────
 -- 3. TRANSFERÊNCIAS LIGADAS (D1) — cada transferência gera:
@@ -140,13 +131,10 @@ create table if not exists investment_contributions (
 
 alter table investment_contributions enable row level security;
 
-drop policy if exists investment_contributions_select on investment_contributions;
-create policy investment_contributions_select on investment_contributions for select
-  using (household_id in (select household_id from members where user_id = auth.uid()));
-
-drop policy if exists investment_contributions_insert on investment_contributions;
-create policy investment_contributions_insert on investment_contributions for insert
-  with check (household_id in (select household_id from members where user_id = auth.uid()));
+drop policy if exists investment_contributions_all on investment_contributions;
+create policy investment_contributions_all on investment_contributions for all
+  using (household_id in (select user_household_ids()))
+  with check (household_id in (select user_household_ids()));
 
 -- RPC que executa a transferência inteira como uma única transação SQL:
 -- se qualquer passo falhar, o Postgres desfaz tudo — é isso que garante a
@@ -172,13 +160,13 @@ begin
   end if;
 
   if not exists (
-    select 1 from investment_positions
+    select 1 from public.investment_positions
     where id = p_position_id and account_id = p_account_id and household_id = p_household_id
   ) then
     raise exception 'Posição de investimento não pertence a esta conta/household';
   end if;
 
-  insert into transactions (
+  insert into public.transactions (
     household_id, account_id, member_id, direction, amount, description,
     date, classification, payment_method, linked_position_id, transfer_group_id
   ) values (
@@ -186,13 +174,13 @@ begin
     p_date, p_classification, 'transferencia', p_position_id, v_group_id
   ) returning id into v_tx_id;
 
-  insert into investment_contributions (
+  insert into public.investment_contributions (
     household_id, position_id, transaction_id, amount, date
   ) values (
     p_household_id, p_position_id, v_tx_id, p_amount, p_date
   ) returning id into v_contrib_id;
 
-  update investment_positions
+  update public.investment_positions
      set valor_aplicado = valor_aplicado + p_amount,
          updated_at     = now()
    where id = p_position_id and household_id = p_household_id;
@@ -201,14 +189,19 @@ begin
   contribution_id := v_contrib_id;
   return next;
 end;
-$$ language plpgsql security invoker;
+$$ language plpgsql security invoker set search_path = '';
 
 -- ───────────────────────────────────────────────────────────────────────
 -- 4. RESERVA DE EMERGÊNCIA (D4) — deixa de ter saldo digitado manualmente
 --    e passa a apontar para uma posição de investimento (is_reserve = true).
---    `multiplier` substitui `target_months` (mesmo conceito: multiplicador
---    padrão 6, editável — "N x soma das despesas essenciais").
+--    `multiplier` substitui `months_target` (mesmo conceito: multiplicador
+--    padrão 6, editável — "N x soma das despesas essenciais"). `current_amount`,
+--    `target_amount` e `method` saem: saldo e meta agora são sempre
+--    derivados (posição vinculada + categorias essenciais), nunca digitados
+--    ou "modo automático/manual" — só existe o modo derivado.
 -- ───────────────────────────────────────────────────────────────────────
-alter table emergency_reserve rename column target_months to multiplier;
+alter table emergency_reserve rename column months_target to multiplier;
 alter table emergency_reserve add column if not exists investment_position_id uuid references investment_positions(id);
-alter table emergency_reserve drop column if exists current_balance;
+alter table emergency_reserve drop column if exists current_amount;
+alter table emergency_reserve drop column if exists target_amount;
+alter table emergency_reserve drop column if exists method;

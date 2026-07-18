@@ -230,16 +230,23 @@ da conta. Estas são as divergências encontradas e as decisões tomadas com o u
 
 3. **Reserva de emergência tinha saldo digitado manualmente.** `emergency_reserve.current_balance`
    era um número que o usuário editava direto no modal, sem relação com nenhuma conta/investimento.
-   **Decisão:** cutover completo — a coluna `current_balance` foi removida; o saldo da reserva agora
-   é sempre o `valor_aplicado` da `investment_position` com `is_reserve = true`, alimentada só por
-   transferências com classificação "Aporte reserva de emergência" (mesma RPC do item 2).
-   `target_months` foi renomeado para `multiplier` (mesmo conceito: multiplicador × despesas
-   essenciais, não mais "meses de gasto total").
+   **Decisão:** cutover completo — o saldo da reserva agora é sempre o `valor_aplicado` da
+   `investment_position` com `is_reserve = true`, alimentada só por transferências com classificação
+   "Aporte reserva de emergência" (mesma RPC do item 2). Um multiplicador substitui o antigo campo de
+   meta manual (mesmo conceito: multiplicador × despesas essenciais, não mais "meses de gasto total").
+
+**Correção pós-conexão direta ao Supabase (2026-07-18):** a primeira versão da migração assumia nomes
+de coluna e um padrão de RLS que não batiam com o schema real (ex.: `emergency_reserve` de verdade tem
+`months_target`/`current_amount`/`target_amount`/`method`, não `target_months`/`current_balance` como
+suposto acima) e falhou ao rodar (rollback total). Depois que o usuário conectou o Supabase MCP, foi
+possível inspecionar o schema real, corrigir a migração (RLS via `user_household_ids()`, trigger
+`update_updated_at()`, nomes de coluna corretos) e aplicá-la diretamente — ver o commit "fix: corrige
+migrações Sprint 2/3 contra o schema real do Supabase" e o cabeçalho do próprio arquivo de migração.
 
 **Onde está o quê:**
 - `supabase/migrations/20260717120000_sprint2_modelo_financeiro.sql` — schema completo, RLS e a RPC
-  `transfer_to_investment`. **Precisa ser rodado manualmente no SQL Editor do Supabase** — o ambiente
-  de execução do agente não tem CLI nem service-role configurados para aplicar migrações direto.
+  `transfer_to_investment`. **Já aplicada em produção** (ver nota acima) — o arquivo fica versionado
+  como registro/documentação.
 - `js/finance-model.js` — funções puras do modelo (cálculo da transferência e da meta de reserva),
   compartilhadas entre as páginas e os testes.
 - `tests/finance-model.test.js` (`npm test`) — cobre a invariante obrigatória do D1 (transferir R$500:
