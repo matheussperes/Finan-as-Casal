@@ -6,6 +6,7 @@
   <title>Finanças do Casal — Lançamentos</title>
   <link rel="stylesheet" href="globals.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/finance-model.js"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <style>
     .page-header {
@@ -459,7 +460,15 @@
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       margin-bottom: 8px;
+      cursor: pointer;
+      transition: all var(--transition);
+      width: 100%;
+      text-align: left;
+      background: var(--surface);
+      font: inherit;
+      color: inherit;
     }
+    .invoice-row:hover { border-color: var(--emerald-300); background: var(--slate-50); }
     .invoice-row:last-child { margin-bottom: 0; }
     .invoice-row .inv-period { font-weight: 600; font-size: .8438rem; color: var(--text-primary); min-width: 130px; }
     .invoice-row .inv-info { flex: 1; font-size: .75rem; color: var(--text-muted); }
@@ -719,15 +728,6 @@
         </div>
         <select class="input select filter-select" id="filter-cat">
           <option value="">Todas as categorias</option>
-          <option value="Renda">Renda</option>
-          <option value="Despesas obrigatórias">Despesas obrigatórias</option>
-          <option value="Despesas não obrigatórias">Despesas não obrigatórias</option>
-          <option value="Investimentos">Investimentos</option>
-          <option value="Projetos">Projetos</option>
-          <option value="Dívidas">Dívidas</option>
-          <option value="Empresa e autônomo">Empresa e autônomo</option>
-          <option value="Financiamentos">Financiamentos</option>
-          <option value="Classificação neutra">Classificação neutra</option>
         </select>
         <select class="input select filter-select" id="filter-direction">
           <option value="">Entradas e saídas</option>
@@ -839,17 +839,30 @@
       </div>
       <div class="form-group full">
         <label class="form-label">Classificação</label>
-        <select class="input select" id="tx-cat">
-          <option value="Renda">Renda</option>
-          <option value="Despesas obrigatórias" selected>Despesas obrigatórias</option>
-          <option value="Despesas não obrigatórias">Despesas não obrigatórias</option>
-          <option value="Investimentos">Investimentos</option>
-          <option value="Projetos">Projetos</option>
-          <option value="Dívidas">Dívidas</option>
-          <option value="Empresa e autônomo">Empresa e autônomo</option>
-          <option value="Financiamentos">Financiamentos</option>
-          <option value="Classificação neutra">Classificação neutra</option>
+        <select class="input select" id="tx-cat"></select>
+      </div>
+      <div class="form-group full" id="tx-investment-group" style="display:none">
+        <label class="form-label">Posição de investimento</label>
+        <select class="input select" id="tx-investment-position">
+          <option value="">+ Nova posição…</option>
         </select>
+        <span class="form-hint">A transferência sai do saldo disponível da conta e entra nesta posição (D1) — o patrimônio da conta não muda.</span>
+      </div>
+      <div class="form-group full" id="tx-new-position-group" style="display:none">
+        <div class="modal-form-grid" style="grid-template-columns:1fr 1fr;padding:0">
+          <div class="form-group full">
+            <label class="form-label">Nome da posição</label>
+            <input class="input" type="text" id="tx-position-name" placeholder="Ex: CDB Banco X, Tesouro Selic…" maxlength="80" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tipo <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+            <input class="input" type="text" id="tx-position-tipo" placeholder="Ex: CDB, Tesouro…" maxlength="40" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Vencimento <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+            <input class="input" type="date" id="tx-position-vencimento" />
+          </div>
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Meio de pagamento</label>
@@ -1114,6 +1127,8 @@
   let allCardTxs         = []; // TODAS as transações de cartão (qualquer mês) — p/ limite disponível
   let editingCardId     = null;
   let deletingCardId    = null;
+  let categories           = []; // categorias do household (ORC-01) — fonte dos selects de categoria
+  let investmentPositions  = []; // posições de investimento do household (D1 — ORC-03)
   let activeTab          = 'mine'; // 'mine' | 'joint' | 'partner'
   let jointOwnerFilter    = 'all'; // 'all' | 'mine' | 'partner' | 'unset' — só usado dentro da aba joint
   let editingId       = null;
@@ -1134,6 +1149,7 @@
   const METHOD_LABEL = {
     pix:'Pix',debito:'Débito',credito:'Crédito',
     dinheiro:'Dinheiro',ted:'TED / DOC',boleto:'Boleto',outro:'Outro',
+    transferencia:'Transferência p/ investimento',
   };
 
   /* ═══════════════════════════════════════════════════════════════
@@ -1291,17 +1307,20 @@
     householdId = member.household_id;
     myMemberId  = member.id;
 
-    /* Busca nome do casal, membros e contas — queries separadas (regra do projeto) */
-    const [hhRes, membersRes, accountsRes] = await Promise.all([
+    /* Busca nome do casal, membros, contas e categorias — queries separadas (regra do projeto) */
+    const [hhRes, membersRes, accountsRes, categoriesRes] = await Promise.all([
       _supabase.from('households').select('name').eq('id', householdId).maybeSingle(),
       _supabase.from('members').select('*').eq('household_id', householdId),
       _supabase.from('accounts').select('*').eq('household_id', householdId).order('created_at', { ascending: true }),
+      _supabase.from('categories').select('*').eq('household_id', householdId)
+        .order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
     ]);
 
     document.getElementById('couple-name-text').textContent = hhRes.data?.name || 'Nosso Casal';
 
     allMembers  = membersRes.data || [];
     allAccounts = accountsRes.data || [];
+    categories  = categoriesRes.data || [];
     const partner = allMembers.find(m => m.id !== myMemberId);
     partnerMemberId = partner?.id || null;
 
@@ -1320,6 +1339,7 @@
     }
 
     await loadCardFinanceData();
+    await loadInvestmentPositions();
     await refreshInvoiceStatuses();
     renderInvoiceAlerts();
 
@@ -1328,10 +1348,90 @@
     populateAccountSelect();
     populateCardFormSelects();
     populateTxOwnerSelect();
+    populateCategorySelects();
 
     updateMonthLabel();
     await loadTransactions();
   })();
+
+  /* ── POSIÇÕES DE INVESTIMENTO (D1) — usadas na transferência (ORC-03) ── */
+  async function loadInvestmentPositions() {
+    const { data, error } = await _supabase
+      .from('investment_positions')
+      .select('*')
+      .eq('household_id', householdId)
+      .order('created_at', { ascending: true });
+    if (error) { toast('Erro ao carregar posições de investimento: ' + error.message, 'error'); return; }
+    investmentPositions = data || [];
+  }
+
+  /* ── CATEGORIAS (ORC-01) — popula o filtro e o select do modal a partir do banco ── */
+  function populateCategorySelects() {
+    const filterSel = document.getElementById('filter-cat');
+    const prevFilterValue = filterSel.value;
+    filterSel.innerHTML = '<option value="">Todas as categorias</option>' +
+      categories.map(c => `<option value="${escHtml(c.name)}">${escHtml(c.name)}</option>`).join('');
+    if (categories.some(c => c.name === prevFilterValue)) filterSel.value = prevFilterValue;
+
+    const txSel = document.getElementById('tx-cat');
+    const prevTxValue = txSel.value;
+    txSel.innerHTML = categories
+      .map(c => `<option value="${escHtml(c.name)}">${escHtml(c.name)}</option>`).join('');
+    if (categories.some(c => c.name === prevTxValue)) txSel.value = prevTxValue;
+    else txSel.value = 'Despesas obrigatórias';
+  }
+
+  /* ── TRANSFERÊNCIA PARA INVESTIMENTO (D1 — ORC-03) ──
+     Quando a classificação é "Investimentos" ou "Aporte reserva de emergência",
+     o lançamento vira uma transferência: saída do saldo disponível da conta +
+     entrada numa posição de investimento, em vez de um gasto comum. */
+  function isInvestmentCategory(catName) {
+    return catName === FinanceModel.INVESTMENT_CATEGORY_NAME || catName === FinanceModel.RESERVE_CATEGORY_NAME;
+  }
+
+  function accountPositions(accountId) {
+    return investmentPositions.filter(p => p.account_id === accountId);
+  }
+
+  function refreshInvestmentOptions() {
+    const cat = document.getElementById('tx-cat').value;
+    const investGroup = document.getElementById('tx-investment-group');
+    const newPosGroup = document.getElementById('tx-new-position-group');
+    const posSel = document.getElementById('tx-investment-position');
+
+    if (editingId || !isInvestmentCategory(cat)) {
+      investGroup.style.display = 'none';
+      newPosGroup.style.display = 'none';
+      return;
+    }
+
+    investGroup.style.display = '';
+
+    const accountId = document.getElementById('tx-account').value;
+    const isReserve = cat === FinanceModel.RESERVE_CATEGORY_NAME;
+
+    if (isReserve) {
+      // A posição da reserva é única por household e configurada em Plano/Orçamento —
+      // aqui só usamos a que já existe, sem oferecer "criar nova".
+      const reservePos = investmentPositions.find(p => p.is_reserve);
+      if (reservePos) {
+        posSel.innerHTML = `<option value="${reservePos.id}">${escHtml(reservePos.name)} (${escHtml(allAccounts.find(a => a.id === reservePos.account_id)?.name || '')})</option>`;
+        posSel.value = reservePos.id;
+        posSel.disabled = true;
+      } else {
+        posSel.innerHTML = '<option value="">Configure a reserva em Plano/Orçamento primeiro</option>';
+        posSel.disabled = true;
+      }
+      newPosGroup.style.display = 'none';
+      return;
+    }
+
+    posSel.disabled = false;
+    const positions = accountId ? accountPositions(accountId) : [];
+    posSel.innerHTML = '<option value="">+ Nova posição…</option>' +
+      positions.map(p => `<option value="${p.id}">${escHtml(p.name)} — ${fmtBRL(p.valor_aplicado)} aplicado</option>`).join('');
+    newPosGroup.style.display = posSel.value === '' ? '' : 'none';
+  }
 
   /* ── DADOS FINANCEIROS DE CARTÃO (faturas, pagamentos, transações de cartão) ──
      Carregados de todos os períodos (não só o mês visível) porque o limite
@@ -1453,6 +1553,11 @@
     }).join('');
   }
 
+  /* LAN-02 — ticket de fatura clicável: leva ao detalhe do cartão (PAT-06) já naquela fatura */
+  function goToCardDetail(cardId, period) {
+    window.location.href = `patrimonio.html?view=card&cardId=${encodeURIComponent(cardId)}&period=${encodeURIComponent(period)}`;
+  }
+
   /* ── Modal lista de faturas ── */
   function openInvoicesModal() {
     renderInvoicesList();
@@ -1480,13 +1585,13 @@
             const remaining = total - paid;
             const canPay = inv.status === 'closed' && remaining > 0.004;
             return `
-              <div class="invoice-row">
+              <div class="invoice-row" onclick="goToCardDetail('${card.id}', '${inv.period}')" role="button" tabindex="0" title="Ver detalhe do cartão nesta fatura">
                 <span class="inv-period">${periodLabel(inv.period)}</span>
                 <span class="badge ${STATUS_BADGE[inv.status] || 'badge-slate'}">${STATUS_LABEL[inv.status] || inv.status}</span>
                 <span class="inv-info">
                   Total ${fmtBRL(total)}${paid > 0 ? ` · Pago ${fmtBRL(paid)} · Restante ${fmtBRL(remaining)}` : ''} · Vence ${fmtDate(inv.due_date)}
                 </span>
-                ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="openPayModal('${inv.id}')">Pagar</button>` : ''}
+                ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); openPayModal('${inv.id}')">Pagar</button>` : ''}
               </div>`;
           }).join('');
       return `
@@ -1767,8 +1872,9 @@
     const cardSel   = document.getElementById('tx-card');
     const accountId = document.getElementById('tx-account').value;
     const cards     = accountId ? accountCards(accountId) : [];
+    const cat       = document.getElementById('tx-cat').value;
 
-    if (editingId || selectedDir !== 'expense' || cards.length === 0) {
+    if (editingId || selectedDir !== 'expense' || cards.length === 0 || isInvestmentCategory(cat)) {
       cardGroup.style.display = 'none';
       cardSel.value = '';
       onTxCardChange();
@@ -2232,6 +2338,7 @@
       document.getElementById('tx-card').disabled = false;
       refreshCardOptions(); // com editingId setado, esconde o grupo de cartão
     }
+    refreshInvestmentOptions(); // com editingId setado, esconde os grupos de transferência
     openModal('modal-tx');
   }
 
@@ -2252,7 +2359,11 @@
     document.getElementById('tx-card-locked-note').style.display = 'none';
     ['tx-account','tx-date','tx-installments','tx-card','tx-method']
       .forEach(fid => { document.getElementById(fid).disabled = false; });
+    document.getElementById('tx-position-name').value = '';
+    document.getElementById('tx-position-tipo').value = '';
+    document.getElementById('tx-position-vencimento').value = '';
     refreshCardOptions();
+    refreshInvestmentOptions();
   }
 
   function clearAccountError() {
@@ -2263,6 +2374,23 @@
   document.getElementById('tx-account').addEventListener('change', () => {
     clearAccountError();
     refreshCardOptions();
+    refreshInvestmentOptions();
+  });
+
+  document.getElementById('tx-cat').addEventListener('change', () => {
+    const cat = document.getElementById('tx-cat').value;
+    if (isInvestmentCategory(cat) && !editingId) {
+      // Transferência para investimento é sempre uma saída do saldo disponível (D1)
+      selectedDir = 'expense';
+      document.getElementById('modal-tx-title').textContent = 'Nova saída';
+    }
+    refreshCardOptions();
+    refreshInvestmentOptions();
+  });
+
+  document.getElementById('tx-investment-position').addEventListener('change', () => {
+    document.getElementById('tx-new-position-group').style.display =
+      document.getElementById('tx-investment-position').value === '' ? '' : 'none';
   });
 
   document.getElementById('modal-tx-save').addEventListener('click', saveTx);
@@ -2299,6 +2427,62 @@
     saveBtn.classList.add('btn-loading');
     saveBtn.disabled = true;
     const done = () => { saveBtn.classList.remove('btn-loading'); saveBtn.disabled = false; };
+
+    /* ── Novo lançamento = transferência para investimento (D1 — ORC-03) ──
+       Em vez de um insert comum, chama a RPC que faz as duas escritas ligadas
+       (saída do saldo disponível + entrada na posição) numa única transação SQL. */
+    if (!editingId && isInvestmentCategory(cat)) {
+      const isReserve = cat === FinanceModel.RESERVE_CATEGORY_NAME;
+      let positionId = document.getElementById('tx-investment-position').value;
+
+      if (isReserve && !positionId) {
+        done();
+        toast('Configure a reserva de emergência em Plano/Orçamento antes de aportar.', 'error');
+        return;
+      }
+
+      if (!isReserve && !positionId) {
+        const posName = document.getElementById('tx-position-name').value.trim();
+        if (!posName) {
+          done();
+          toast('Informe o nome da nova posição de investimento.', 'error');
+          return;
+        }
+        const { data: newPos, error: posErr } = await _supabase
+          .from('investment_positions')
+          .insert({
+            household_id: householdId,
+            account_id:   accountId,
+            name:         posName,
+            tipo:         document.getElementById('tx-position-tipo').value.trim() || null,
+            vencimento:   document.getElementById('tx-position-vencimento').value || null,
+          })
+          .select()
+          .single();
+        if (posErr) { done(); toast('Erro ao criar posição: ' + posErr.message, 'error'); return; }
+        positionId = newPos.id;
+        investmentPositions.push(newPos);
+      }
+
+      const { error } = await _supabase.rpc('transfer_to_investment', {
+        p_household_id:   householdId,
+        p_account_id:     accountId,
+        p_position_id:    positionId,
+        p_amount:         amount,
+        p_date:           date,
+        p_classification: cat,
+        p_description:    desc,
+        p_member_id:      deriveMemberIdFromAccount(accountId),
+      });
+
+      done();
+      if (error) { toast('Erro ao transferir: ' + error.message, 'error'); return; }
+      toast('Transferência registrada — saldo disponível e posição atualizados.', 'success');
+      closeModal('modal-tx');
+      await loadInvestmentPositions();
+      await loadTransactions();
+      return;
+    }
 
     /* ── Edição ── */
     if (editingId) {

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="globals.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="js/finance-model.js"></script>
   <style>
     /* ─── Sidebar overlay mobile ─── */
     .sidebar-overlay {
@@ -201,7 +202,7 @@
     /* ─── Linha de categoria ─── */
     .cat-row {
       display: grid;
-      grid-template-columns: 32px 1fr auto;
+      grid-template-columns: 32px 1fr auto auto;
       align-items: center;
       gap: 14px;
       padding: 16px 24px;
@@ -210,6 +211,56 @@
     }
     .cat-row:last-child { border-bottom: none; }
     .cat-row:hover { background: var(--slate-50); }
+
+    /* ─── Ações da categoria (editar / excluir) ─── */
+    .cat-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .icon-btn {
+      width: 28px; height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .icon-btn:hover { background: var(--surface-alt); color: var(--text-primary); }
+    .icon-btn.danger:hover { background: #fff1f2; color: var(--danger, #e11d48); }
+    .essencial-badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: .6875rem;
+      font-weight: 700;
+      color: #9a3412;
+      background: #fff7ed;
+      border-radius: var(--radius-full);
+      padding: 1px 7px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .confirm-modal { max-width: 380px; }
+    .confirm-body { padding: 16px 24px 0; }
+    .confirm-body p { font-size: .9375rem; color: var(--text-secondary); line-height: 1.5; }
+    .confirm-footer { padding: 20px 24px; display: flex; gap: 10px; justify-content: flex-end; }
+    .cat-form-checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .875rem;
+      color: var(--text-secondary);
+    }
+    .reserve-setup-hint {
+      font-size: .8125rem;
+      color: var(--text-muted);
+      background: var(--slate-50);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      line-height: 1.5;
+    }
 
     .cat-icon {
       width: 32px; height: 32px;
@@ -723,6 +774,13 @@
               <div class="budget-card-title">Orçamento por Classificação</div>
               <div class="budget-card-hint">Clique no valor da meta para editar · salva automaticamente</div>
             </div>
+            <button class="btn btn-secondary btn-sm" id="btn-new-category">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                   fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Nova categoria
+            </button>
           </div>
           <div id="cat-list">
             <!-- Skeletons -->
@@ -799,7 +857,7 @@
       <div>
         <div class="modal-title">Reserva de Emergência</div>
         <p style="font-size:.8125rem;color:var(--text-muted);margin-top:4px">
-          Ideal: 6 a 12 meses de gastos essenciais
+          Ideal: 6x a 12x as despesas essenciais mensais
         </p>
       </div>
       <button class="btn btn-ghost btn-icon modal-close" id="modal-reserve-close">
@@ -810,27 +868,85 @@
       </button>
     </div>
     <div class="reserve-form-grid">
-      <div class="form-group">
-        <label class="form-label">Saldo atual da reserva</label>
-        <div class="input-prefix">
-          <span class="prefix-label">R$</span>
-          <input type="number" class="input" id="res-balance" placeholder="0,00" step="0.01" min="0" />
-        </div>
+      <div class="form-group" id="reserve-balance-readonly-group" style="display:none">
+        <label class="form-label">Saldo atual da reserva (via aportes)</label>
+        <div class="input" id="res-balance-readonly" style="background:var(--slate-50);color:var(--text-secondary)">—</div>
       </div>
       <div class="form-group">
-        <label class="form-label">Meta (meses de gastos)</label>
+        <label class="form-label">Multiplicador (x despesas essenciais)</label>
         <select class="input select" id="res-months">
-          <option value="3">3 meses</option>
-          <option value="6" selected>6 meses (recomendado)</option>
-          <option value="9">9 meses</option>
-          <option value="12">12 meses</option>
+          <option value="3">3x</option>
+          <option value="6" selected>6x (recomendado)</option>
+          <option value="9">9x</option>
+          <option value="12">12x</option>
         </select>
-        <span class="form-hint" id="res-months-hint">Equivale a R$ — de gastos mensais</span>
+        <span class="form-hint" id="res-months-hint">Equivale a R$ — de despesas essenciais</span>
+      </div>
+      <div class="form-group" id="reserve-account-group" style="display:none">
+        <label class="form-label">Conta que vai guardar a reserva</label>
+        <select class="input select" id="res-account"></select>
+        <span class="form-hint">A reserva vira uma posição de investimento dentro desta conta corrente.</span>
+      </div>
+      <div class="reserve-setup-hint" id="reserve-setup-hint" style="display:none">
+        Após configurar, os aportes são feitos em Lançamentos, usando a categoria
+        "Aporte reserva de emergência" — o saldo aqui é só leitura.
       </div>
     </div>
     <div style="display:flex;gap:10px;margin-top:24px">
       <button class="btn btn-secondary btn-full" id="modal-reserve-cancel">Cancelar</button>
       <button class="btn btn-primary btn-full" id="modal-reserve-save">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL CATEGORIA (CRIAR / EDITAR) ═══ -->
+<div class="modal-overlay" id="modal-category">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-category-title">Nova categoria</div>
+      <button class="btn btn-ghost btn-icon modal-close" id="modal-category-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="reserve-form-grid">
+      <div class="form-group">
+        <label class="form-label">Nome da categoria</label>
+        <input type="text" class="input" id="cat-name" placeholder="Ex: Assinaturas" maxlength="60" />
+      </div>
+      <label class="cat-form-checkbox-row">
+        <input type="checkbox" id="cat-essencial" />
+        Despesa essencial (entra no cálculo da reserva de emergência)
+      </label>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:24px">
+      <button class="btn btn-secondary btn-full" id="modal-category-cancel">Cancelar</button>
+      <button class="btn btn-primary btn-full" id="modal-category-save">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL CONFIRMAR EXCLUSÃO DE CATEGORIA ═══ -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal confirm-modal">
+    <div class="modal-header">
+      <span class="modal-title">Excluir categoria</span>
+      <button class="modal-close" id="modal-confirm-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="confirm-body">
+      <p>Tem certeza que deseja excluir a categoria <strong id="confirm-category-name">"—"</strong>?
+      Lançamentos existentes com essa categoria serão movidos para "Classificação neutra".</p>
+    </div>
+    <div class="confirm-footer">
+      <button class="btn btn-secondary" id="modal-confirm-cancel">Cancelar</button>
+      <button class="btn btn-danger" id="modal-confirm-ok">Excluir</button>
     </div>
   </div>
 </div>
@@ -851,30 +967,26 @@
   ══════════════════════════════════════════════ */
   let householdId       = null;
   let monthlyIncome     = 0;    // renda total do household
-  let budgetPlans       = {};   // { classification: monthly_limit }
-  let budgetPlanIds     = {};   // { classification: id }
-  let realizedByClass   = {};   // { classification: total_gasto }
-  let reserveData       = null; // { id, target_months, current_balance }
+  let budgetPlans       = {};   // { categoryName: monthly_limit }
+  let budgetPlanIds     = {};   // { categoryName: id }
+  let realizedByClass   = {};   // { categoryName: total_gasto }
+  let categories        = [];   // [{ id, name, essencial, is_protected, sort_order }]
+  let checkingAccounts  = [];   // contas correntes do household (para configurar a reserva)
+  let reserveData       = null; // { id, multiplier, investment_position_id }
+  let reservePosition    = null; // investment_positions vinculada à reserva (se já configurada)
+  let editingCategoryId  = null;
+  let deletingCategory   = null;
   let donutChart        = null;
 
   const currentDate     = new Date();
   currentDate.setDate(1);
 
   /* ══════════════════════════════════════════════
-     TAXONOMIA DE CLASSIFICAÇÕES
+     TAXONOMIA DE CATEGORIAS (ORC-01)
+     As categorias em si vêm do banco (tabela `categories`, por household).
+     Este mapa só dá um ícone/cor bonito para os nomes padrão — categorias
+     novas criadas pelo usuário caem no fallback genérico.
   ══════════════════════════════════════════════ */
-  const CLASSIFICATIONS = [
-    'Renda',
-    'Despesas obrigatórias',
-    'Despesas não obrigatórias',
-    'Empresa e autônomo',
-    'Projetos',
-    'Financiamentos',
-    'Dívidas',
-    'Investimentos',
-    'Classificação neutra',
-  ];
-
   const CAT_META = {
     'Renda':                    { icon: '💰', bg: '#ecfdf5', color: '#065f46' },
     'Despesas obrigatórias':    { icon: '🏠', bg: '#fff7ed', color: '#9a3412' },
@@ -886,6 +998,10 @@
     'Investimentos':            { icon: '📈', bg: '#f0fdf4', color: '#14532d' },
     'Classificação neutra':     { icon: '📋', bg: '#f8fafc', color: '#475569' },
   };
+  const CAT_META_FALLBACK = { icon: '📌', bg: '#f8fafc', color: '#475569' };
+
+  /* Categorias internas de bookkeeping — não aparecem na lista de orçamento */
+  const HIDDEN_FROM_BUDGET_LIST = ['Renda', FinanceModel.RESERVE_CATEGORY_NAME];
 
   const CHART_COLORS = [
     '#10b981','#f43f5e','#3b82f6','#f59e0b','#8b5cf6',
@@ -900,6 +1016,11 @@
   ══════════════════════════════════════════════ */
   function fmtBRL(v) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+  }
+
+  function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   /* ══════════════════════════════════════════════
@@ -951,13 +1072,41 @@
   ══════════════════════════════════════════════ */
   async function loadAll() {
     await Promise.all([
+      loadCategories(),
+      loadCheckingAccounts(),
       loadBudgetPlans(),
       loadTransactions(),
-      loadReserve(),
     ]);
+    await loadReserve(); // depende das categorias (soma de essenciais) já carregadas
     renderCategories();
     renderKPIs();
     renderChart();
+  }
+
+  /* ─── Categorias (ORC-01 / ORC-02) ─── */
+  async function loadCategories() {
+    const { data, error } = await _supabase
+      .from('categories')
+      .select('*')
+      .eq('household_id', householdId)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (error) { toast('Erro ao carregar categorias: ' + error.message, 'error'); return; }
+    categories = data || [];
+  }
+
+  /* ─── Contas correntes (para configurar onde mora a reserva — D1) ─── */
+  async function loadCheckingAccounts() {
+    const { data, error } = await _supabase
+      .from('accounts')
+      .select('id, name, account_type')
+      .eq('household_id', householdId)
+      .eq('account_type', 'checking')
+      .order('created_at', { ascending: true });
+
+    if (error) { toast('Erro ao carregar contas: ' + error.message, 'error'); return; }
+    checkingAccounts = data || [];
   }
 
   /* ─── Budget plans ─── */
@@ -999,7 +1148,10 @@
     });
   }
 
-  /* ─── Reserva de emergência ─── */
+  /* ─── Reserva de emergência (D4) ───
+     O saldo não é mais digitado: vem do valor_aplicado da posição de
+     investimento vinculada (alimentada só por lançamentos "Aporte reserva
+     de emergência" em Lançamentos — ORC-03). */
   async function loadReserve() {
     const { data } = await _supabase
       .from('emergency_reserve')
@@ -1007,7 +1159,18 @@
       .eq('household_id', householdId)
       .maybeSingle();
 
-    reserveData = data || { target_months: 6, current_balance: 0 };
+    reserveData = data || { multiplier: 6, investment_position_id: null };
+    reservePosition = null;
+
+    if (reserveData.investment_position_id) {
+      const { data: pos } = await _supabase
+        .from('investment_positions')
+        .select('*')
+        .eq('id', reserveData.investment_position_id)
+        .maybeSingle();
+      reservePosition = pos || null;
+    }
+
     renderReserve();
   }
 
@@ -1017,11 +1180,19 @@
   function renderCategories() {
     const list = document.getElementById('cat-list');
 
-    // Categorias a mostrar: só despesas (exclui Renda)
-    const cats = CLASSIFICATIONS.filter(c => c !== 'Renda');
+    // Categorias a mostrar: exclui Renda e categorias internas de bookkeeping
+    const cats = categories.filter(c => !HIDDEN_FROM_BUDGET_LIST.includes(c.name));
 
-    list.innerHTML = cats.map(cls => {
-      const meta     = CAT_META[cls] || { icon: '📋', bg: '#f8fafc', color: '#475569' };
+    if (cats.length === 0) {
+      list.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:.875rem">
+        Nenhuma categoria ainda. Clique em "Nova categoria" para criar a primeira.
+      </div>`;
+      return;
+    }
+
+    list.innerHTML = cats.map(c => {
+      const cls      = c.name;
+      const meta     = CAT_META[cls] || CAT_META_FALLBACK;
       const limit    = budgetPlans[cls] || 0;
       const realized = realizedByClass[cls] || 0;
       const pct      = limit > 0 ? Math.min((realized / limit) * 100, 100) : 0;
@@ -1034,7 +1205,7 @@
         <div class="cat-row" data-cls="${cls}">
           <div class="cat-icon" style="background:${meta.bg};color:${meta.color}">${meta.icon}</div>
           <div class="cat-body">
-            <div class="cat-name">${cls}</div>
+            <div class="cat-name">${escHtml(cls)}${c.essencial ? '<span class="essencial-badge">essencial</span>' : ''}</div>
             <div class="cat-amounts">
               <strong>${fmtBRL(realized)}</strong>
               <span class="sep">de</span>
@@ -1055,12 +1226,31 @@
                    data-cls="${cls}" value="${limit || ''}"
                    placeholder="0,00" step="0.01" min="0" />
           </div>
+          <div class="cat-actions">
+            <button class="icon-btn" title="Editar categoria" onclick="openCategoryModal('${c.id}')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+                   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </button>
+            ${c.is_protected ? '' : `
+            <button class="icon-btn danger" title="Excluir categoria" onclick="confirmDeleteCategory('${c.id}')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+                   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14H6L5 6"/>
+                <path d="M10 11v6"/><path d="M14 11v6"/>
+                <path d="M9 6V4h6v2"/>
+              </svg>
+            </button>`}
+          </div>
         </div>
       `;
     }).join('');
 
     // Attach event listeners para edição inline
-    cats.forEach(cls => {
+    cats.map(c => c.name).forEach(cls => {
       const safeCls = cls.replace(/[^a-z0-9]/gi, '-');
       const dispEl  = document.getElementById(`disp-${safeCls}`);
       const inpEl   = document.getElementById(`inp-${safeCls}`);
@@ -1220,19 +1410,23 @@
   function renderReserve() {
     if (!reserveData) return;
 
-    const balance     = Number(reserveData.current_balance) || 0;
-    const months      = Number(reserveData.target_months)   || 6;
-
-    // Calcula gastos mensais essenciais (Despesas obrigatórias + Financiamentos + Dívidas)
-    const essential = ['Despesas obrigatórias','Financiamentos','Dívidas']
-      .reduce((s, cls) => s + (budgetPlans[cls] || 0), 0);
-    const avgMonthly = essential > 0 ? essential : (monthlyIncome * 0.6);
-    const target     = months * avgMonthly;
-    const pct        = target > 0 ? Math.min((balance / target) * 100, 100) : 0;
+    // D4: saldo vem só da posição de investimento vinculada (aportes reais),
+    // meta = multiplicador x soma dos limites das categorias essenciais (ORC-02).
+    const balance    = Number(reservePosition?.valor_aplicado) || 0;
+    const multiplier = Number(reserveData.multiplier) || 6;
+    const essentialMonthly = categories
+      .filter(c => c.essencial)
+      .reduce((s, c) => s + (budgetPlans[c.name] || 0), 0);
+    const target = FinanceModel.essentialReserveTarget(categories, budgetPlans, multiplier);
+    const pct    = target > 0 ? Math.min((balance / target) * 100, 100) : 0;
 
     document.getElementById('reserve-current').textContent  = fmtBRL(balance);
     document.getElementById('reserve-target').textContent   = `Meta: ${fmtBRL(target)}`;
-    document.getElementById('reserve-subtitle').textContent = `${months} meses de gastos essenciais`;
+    document.getElementById('reserve-subtitle').textContent = reservePosition
+      ? `${multiplier}x despesas essenciais`
+      : essentialMonthly > 0
+        ? `${multiplier}x despesas essenciais — configure a conta da reserva`
+        : 'Marque categorias como essenciais para calcular a meta';
 
     const fillEl = document.getElementById('reserve-fill');
     fillEl.style.width = pct + '%';
@@ -1244,14 +1438,14 @@
     document.getElementById('reserve-pct').style.color = pct >= 100
       ? 'var(--color-income)' : pct >= 50 ? 'var(--color-warning)' : 'var(--color-expense)';
 
-    const badgeEl   = document.getElementById('reserve-badge');
-    const monthsDone = avgMonthly > 0 ? Math.floor(balance / avgMonthly) : 0;
-    badgeEl.textContent = `${monthsDone}/${months} meses`;
+    const badgeEl    = document.getElementById('reserve-badge');
+    const monthsDone = essentialMonthly > 0 ? Math.floor(balance / essentialMonthly) : 0;
+    badgeEl.textContent = `${monthsDone}/${multiplier}x`;
     badgeEl.className = `reserve-months-badge badge ${pct >= 100 ? 'badge-green' : pct >= 50 ? 'badge-amber' : 'badge-red'}`;
 
     // Atualiza hint do modal
     const hintEl = document.getElementById('res-months-hint');
-    if (hintEl) hintEl.textContent = `Equivale a ${fmtBRL(target)} de gastos essenciais`;
+    if (hintEl) hintEl.textContent = `Equivale a ${fmtBRL(target)} de despesas essenciais`;
   }
 
   /* ══════════════════════════════════════════════
@@ -1262,12 +1456,12 @@
     const values  = [];
     const colors  = [];
 
-    CLASSIFICATIONS
-      .filter(cls => cls !== 'Renda')
-      .forEach((cls, i) => {
-        const v = realizedByClass[cls] || 0;
+    categories
+      .filter(c => c.name !== 'Renda')
+      .forEach((c, i) => {
+        const v = realizedByClass[c.name] || 0;
         if (v > 0) {
-          labels.push(cls);
+          labels.push(c.name);
           values.push(v);
           colors.push(CHART_COLORS[i % CHART_COLORS.length]);
         }
@@ -1359,7 +1553,7 @@
       const results = await Promise.all(promises);
       const avgByClass = {};
 
-      CLASSIFICATIONS.filter(c => c !== 'Renda').forEach(cls => {
+      categories.filter(c => !HIDDEN_FROM_BUDGET_LIST.includes(c.name)).map(c => c.name).forEach(cls => {
         let total = 0;
         let count = 0;
         results.forEach(({ data }) => {
@@ -1408,8 +1602,24 @@
      MODAL RESERVA DE EMERGÊNCIA
   ══════════════════════════════════════════════ */
   function openReserveModal() {
-    document.getElementById('res-balance').value = reserveData?.current_balance || '';
-    document.getElementById('res-months').value  = reserveData?.target_months   || 6;
+    document.getElementById('res-months').value = reserveData?.multiplier || 6;
+
+    const hasPosition = !!reservePosition;
+    document.getElementById('reserve-balance-readonly-group').style.display = hasPosition ? 'flex' : 'none';
+    document.getElementById('reserve-account-group').style.display = hasPosition ? 'none' : 'flex';
+    document.getElementById('reserve-setup-hint').style.display = 'block';
+
+    if (hasPosition) {
+      document.getElementById('res-balance-readonly').textContent = fmtBRL(reservePosition.valor_aplicado);
+    } else {
+      const sel = document.getElementById('res-account');
+      if (checkingAccounts.length === 0) {
+        sel.innerHTML = '<option value="">Nenhuma conta corrente cadastrada</option>';
+      } else {
+        sel.innerHTML = checkingAccounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+      }
+    }
+
     updateReserveHint();
     document.getElementById('modal-reserve').classList.add('open');
   }
@@ -1419,12 +1629,10 @@
   }
 
   function updateReserveHint() {
-    const months  = parseInt(document.getElementById('res-months').value) || 6;
-    const essential = ['Despesas obrigatórias','Financiamentos','Dívidas']
-      .reduce((s, cls) => s + (budgetPlans[cls] || 0), 0);
-    const avgMonthly = essential > 0 ? essential : (monthlyIncome * 0.6);
+    const multiplier = parseInt(document.getElementById('res-months').value) || 6;
+    const target = FinanceModel.essentialReserveTarget(categories, budgetPlans, multiplier);
     document.getElementById('res-months-hint').textContent =
-      `Equivale a ${fmtBRL(months * avgMonthly)} de gastos essenciais`;
+      `Equivale a ${fmtBRL(target)} de despesas essenciais`;
   }
 
   document.getElementById('btn-edit-reserve').addEventListener('click', openReserveModal);
@@ -1437,43 +1645,201 @@
   });
 
   document.getElementById('modal-reserve-save').addEventListener('click', async () => {
-    const balance = parseFloat(document.getElementById('res-balance').value) || 0;
-    const months  = parseInt(document.getElementById('res-months').value)    || 6;
+    const multiplier = parseInt(document.getElementById('res-months').value) || 6;
 
     const saveBtn = document.getElementById('modal-reserve-save');
     saveBtn.classList.add('btn-loading');
     saveBtn.disabled = true;
 
-    let error;
-    if (reserveData?.id) {
-      ({ error } = await _supabase
-        .from('emergency_reserve')
-        .update({ current_balance: balance, target_months: months })
-        .eq('id', reserveData.id));
-    } else {
-      const { data: inserted, error: e } = await _supabase
-        .from('emergency_reserve')
-        .insert({ household_id: householdId, current_balance: balance, target_months: months })
-        .select()
-        .single();
-      error = e;
-      if (!error && inserted) reserveData = inserted;
+    try {
+      let positionId = reservePosition?.id || null;
+
+      // Primeira configuração: cria a posição de investimento dedicada à reserva
+      // numa conta corrente escolhida pelo usuário (D4 — "etiqueta especial").
+      if (!positionId) {
+        const accountId = document.getElementById('res-account').value;
+        if (!accountId) {
+          toast('Selecione uma conta corrente para guardar a reserva.', 'error');
+          return;
+        }
+        const { data: pos, error: posErr } = await _supabase
+          .from('investment_positions')
+          .insert({
+            household_id: householdId,
+            account_id:   accountId,
+            name:         'Reserva de Emergência',
+            is_reserve:   true,
+          })
+          .select()
+          .single();
+        if (posErr) { toast('Erro ao criar posição da reserva: ' + posErr.message, 'error'); return; }
+        positionId = pos.id;
+        reservePosition = pos;
+      }
+
+      let error;
+      if (reserveData?.id) {
+        ({ error } = await _supabase
+          .from('emergency_reserve')
+          .update({ multiplier, investment_position_id: positionId })
+          .eq('id', reserveData.id));
+      } else {
+        const { data: inserted, error: e } = await _supabase
+          .from('emergency_reserve')
+          .insert({ household_id: householdId, multiplier, investment_position_id: positionId })
+          .select()
+          .single();
+        error = e;
+        if (!error && inserted) reserveData = inserted;
+      }
+
+      if (error) { toast('Erro ao salvar reserva: ' + error.message, 'error'); return; }
+
+      if (reserveData) {
+        reserveData.multiplier = multiplier;
+        reserveData.investment_position_id = positionId;
+      }
+
+      toast('Reserva de emergência atualizada!', 'success');
+      closeReserveModal();
+      renderReserve();
+    } finally {
+      saveBtn.classList.remove('btn-loading');
+      saveBtn.disabled = false;
     }
-
-    saveBtn.classList.remove('btn-loading');
-    saveBtn.disabled = false;
-
-    if (error) { toast('Erro ao salvar reserva: ' + error.message, 'error'); return; }
-
-    if (reserveData) {
-      reserveData.current_balance = balance;
-      reserveData.target_months   = months;
-    }
-
-    toast('Reserva de emergência atualizada!', 'success');
-    closeReserveModal();
-    renderReserve();
   });
+
+  /* ══════════════════════════════════════════════
+     CATEGORIAS — CRIAR / EDITAR / EXCLUIR (ORC-01, ORC-02)
+  ══════════════════════════════════════════════ */
+  function openCategoryModal(id = null) {
+    editingCategoryId = id;
+    const cat = id ? categories.find(c => c.id === id) : null;
+
+    document.getElementById('modal-category-title').textContent = cat ? 'Editar categoria' : 'Nova categoria';
+    document.getElementById('cat-name').value = cat?.name || '';
+    document.getElementById('cat-essencial').checked = !!cat?.essencial;
+    document.getElementById('modal-category').classList.add('open');
+    setTimeout(() => document.getElementById('cat-name').focus(), 100);
+  }
+
+  function closeCategoryModal() {
+    document.getElementById('modal-category').classList.remove('open');
+    editingCategoryId = null;
+  }
+
+  async function saveCategory() {
+    const name = document.getElementById('cat-name').value.trim();
+    const essencial = document.getElementById('cat-essencial').checked;
+
+    if (!name) { toast('Informe o nome da categoria', 'error'); return; }
+
+    const btn = document.getElementById('modal-category-save');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+
+    let error;
+    if (editingCategoryId) {
+      ({ error } = await _supabase
+        .from('categories')
+        .update({ name, essencial, updated_at: new Date().toISOString() })
+        .eq('id', editingCategoryId)
+        .eq('household_id', householdId));
+    } else {
+      const nextOrder = categories.reduce((max, c) => Math.max(max, c.sort_order || 0), 0) + 1;
+      const { error: e } = await _supabase
+        .from('categories')
+        .insert({ household_id: householdId, name, essencial, sort_order: nextOrder });
+      error = e;
+    }
+
+    btn.classList.remove('btn-loading'); btn.disabled = false;
+
+    if (error) {
+      const msg = error.code === '23505' ? 'Já existe uma categoria com esse nome.' : ('Erro: ' + error.message);
+      toast(msg, 'error');
+      return;
+    }
+
+    toast(editingCategoryId ? 'Categoria atualizada!' : 'Categoria criada!', 'success');
+    closeCategoryModal();
+    await loadCategories();
+    await loadBudgetPlans();
+    renderCategories();
+    renderReserve();
+    renderChart();
+  }
+
+  function confirmDeleteCategory(id) {
+    const cat = categories.find(c => c.id === id);
+    if (!cat) return;
+    if (cat.is_protected) { toast('Esta categoria não pode ser excluída.', 'error'); return; }
+    deletingCategory = cat;
+    document.getElementById('confirm-category-name').textContent = `"${cat.name}"`;
+    document.getElementById('modal-confirm').classList.add('open');
+  }
+
+  async function deleteCategoryConfirmed() {
+    if (!deletingCategory) return;
+    const btn = document.getElementById('modal-confirm-ok');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+
+    const catName = deletingCategory.name;
+
+    // Reatribui lançamentos e remove a meta de orçamento da categoria excluída
+    // para 'Classificação neutra' antes de excluir (decisão aprovada: nunca bloquear).
+    await _supabase
+      .from('transactions')
+      .update({ classification: FinanceModel.FALLBACK_CATEGORY_NAME })
+      .eq('household_id', householdId)
+      .eq('classification', catName);
+
+    await _supabase
+      .from('budget_plan')
+      .delete()
+      .eq('household_id', householdId)
+      .eq('classification', catName);
+
+    const { error } = await _supabase
+      .from('categories')
+      .delete()
+      .eq('id', deletingCategory.id)
+      .eq('household_id', householdId);
+
+    btn.classList.remove('btn-loading'); btn.disabled = false;
+    document.getElementById('modal-confirm').classList.remove('open');
+
+    if (error) { toast('Erro ao excluir: ' + error.message, 'error'); return; }
+
+    toast('Categoria excluída — lançamentos movidos para "Classificação neutra".', 'info');
+    deletingCategory = null;
+
+    await loadCategories();
+    await loadBudgetPlans();
+    await loadTransactions();
+    renderCategories();
+    renderKPIs();
+    renderChart();
+    renderReserve();
+  }
+
+  document.getElementById('btn-new-category').addEventListener('click', () => openCategoryModal());
+  document.getElementById('modal-category-close').addEventListener('click', closeCategoryModal);
+  document.getElementById('modal-category-cancel').addEventListener('click', closeCategoryModal);
+  document.getElementById('modal-category-save').addEventListener('click', saveCategory);
+  document.getElementById('modal-category').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeCategoryModal();
+  });
+
+  document.getElementById('modal-confirm-close').addEventListener('click', () => {
+    document.getElementById('modal-confirm').classList.remove('open');
+  });
+  document.getElementById('modal-confirm-cancel').addEventListener('click', () => {
+    document.getElementById('modal-confirm').classList.remove('open');
+  });
+  document.getElementById('modal-confirm').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) document.getElementById('modal-confirm').classList.remove('open');
+  });
+  document.getElementById('modal-confirm-ok').addEventListener('click', deleteCategoryConfirmed);
 
   /* ══════════════════════════════════════════════
      NAVEGAÇÃO DE MÊS

@@ -6,6 +6,7 @@
   <title>Finanças do Casal — Patrimônio</title>
   <link rel="stylesheet" href="globals.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/finance-model.js"></script>
   <style>
     .page-header {
       display: flex;
@@ -108,71 +109,6 @@
     .kpi-card-v2.income  .kpi-value-v2 { color: var(--color-income); }
     .kpi-card-v2.expense .kpi-value-v2 { color: var(--color-expense); }
     .kpi-sub { font-size: .75rem; color: var(--text-muted); margin-top: 6px; }
-    .accounts-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 16px;
-    }
-    .account-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 20px;
-      cursor: pointer;
-      transition: all var(--transition);
-      text-align: left;
-      width: 100%;
-    }
-    .account-card:hover {
-      border-color: var(--emerald-500);
-      box-shadow: 0 4px 12px rgba(16, 185, 129, .08);
-      transform: translateY(-1px);
-    }
-    .account-card-head {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 14px;
-    }
-    .account-emoji {
-      width: 42px; height: 42px;
-      border-radius: var(--radius-md);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.25rem;
-      flex-shrink: 0;
-    }
-    .account-name { font-weight: 700; font-size: .9375rem; color: var(--text-primary); }
-    .account-sub  { font-size: .75rem; color: var(--text-muted); margin-top: 2px; }
-    .account-balance-label { font-size: .6875rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
-    .account-balance {
-      font-family: var(--font-display);
-      font-size: 1.375rem;
-      font-weight: 800;
-      color: var(--text-primary);
-      margin-top: 2px;
-    }
-    .account-balance.negative { color: var(--color-expense); }
-    .account-cards-list { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
-    .account-cc-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      font-size: .75rem;
-      color: var(--text-secondary);
-      padding: 5px 0;
-    }
-    .account-cc-row .cc-name { font-weight: 600; color: var(--text-primary); }
-    .account-cc-row .cc-alert { color: var(--color-expense); font-weight: 600; }
-    .empty-block {
-      text-align: center;
-      padding: 60px 24px;
-      background: var(--surface);
-      border: 1px dashed var(--border);
-      border-radius: var(--radius-lg);
-      color: var(--text-muted);
-      font-size: .875rem;
-    }
     /* ── Detalhe da conta ── */
     .detail-header {
       display: flex;
@@ -300,7 +236,6 @@
     @media (max-width: 1024px) { .kpi-grid-3 { grid-template-columns: 1fr; } }
     @media (max-width: 768px) {
       .mobile-menu-btn { display: flex; }
-      .accounts-grid { grid-template-columns: 1fr; }
       .detail-header { gap: 10px; }
       .month-nav { margin-left: 0; }
       table { display: block; overflow-x: auto; }
@@ -308,6 +243,120 @@
     @media (max-width: 480px) {
       .tabs-bar { width: 100%; overflow-x: auto; }
     }
+
+    /* ═══ PAT-01..04 — cards de resumo (Financeiro / Bens / Dívidas) ═══ */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .summary-card {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      text-align: left;
+      cursor: pointer;
+      transition: all var(--transition);
+      width: 100%;
+    }
+    .summary-card:hover { border-color: var(--emerald-300); }
+    .summary-card.active { border-color: var(--emerald-500); box-shadow: 0 0 0 3px rgba(16,185,129,.1); }
+    .summary-card-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: .8125rem; font-weight: 700; color: var(--text-secondary);
+      margin-bottom: 14px;
+    }
+    .summary-metric { margin-bottom: 10px; }
+    .summary-metric:last-child { margin-bottom: 0; }
+    .summary-metric-label { font-size: .6875rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+    .summary-metric-value { font-family: var(--font-display); font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-top: 2px; }
+    .summary-metric-sub { font-size: .75rem; color: var(--text-muted); margin-top: 1px; }
+
+    .expansion-panel { display: flex; flex-direction: column; gap: 20px; }
+    .panel-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+    .panel-section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+    }
+    .panel-section-title { font-family: var(--font-display); font-weight: 700; font-size: .9375rem; color: var(--text-primary); }
+    .panel-list { display: flex; flex-direction: column; }
+    .panel-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 14px 20px; border-bottom: 1px solid var(--border);
+      cursor: pointer; transition: background var(--transition); text-align: left; width: 100%;
+      background: none;
+    }
+    .panel-row:last-child { border-bottom: none; }
+    .panel-row:hover { background: var(--slate-50); }
+    .panel-row-main { min-width: 0; }
+    .panel-row-name { font-weight: 600; font-size: .875rem; color: var(--text-primary); }
+    .panel-row-sub { font-size: .75rem; color: var(--text-muted); margin-top: 2px; }
+    .panel-row-value { font-family: var(--font-display); font-weight: 700; font-size: .9375rem; color: var(--text-primary); text-align: right; white-space: nowrap; }
+    .panel-empty { padding: 32px 20px; text-align: center; color: var(--text-muted); font-size: .8125rem; }
+    .mini-progress { height: 5px; background: var(--slate-100); border-radius: var(--radius-full); overflow: hidden; margin-top: 8px; width: 100%; max-width: 160px; }
+    .mini-progress-fill { height: 100%; background: var(--primary); border-radius: var(--radius-full); }
+
+    /* ─── Ticket (modal de detalhe) ─── */
+    .ticket-grid { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 8px; }
+    .ticket-row { display: flex; align-items: center; justify-content: space-between; font-size: .8125rem; color: var(--text-muted); }
+    .ticket-row strong { font-family: var(--font-display); font-size: .9375rem; color: var(--text-primary); font-weight: 700; }
+    .ticket-divider { height: 1px; background: var(--border); margin: 2px 0; }
+    .ticket-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .icon-btn {
+      width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+      border-radius: var(--radius-sm); color: var(--text-muted); transition: all var(--transition); flex-shrink: 0;
+    }
+    .icon-btn:hover { background: var(--surface-alt); color: var(--text-primary); }
+    .icon-btn.danger:hover { background: #fff1f2; color: var(--danger, #e11d48); }
+    .modal-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .modal-form-grid .full { grid-column: 1 / -1; }
+    @media (max-width: 640px) {
+      .summary-grid { grid-template-columns: 1fr; }
+      .modal-form-grid { grid-template-columns: 1fr; }
+      .modal-form-grid .full { grid-column: 1; }
+    }
+
+    /* ─── Link dentro do card Financeiro (atalho p/ PAT-07) ─── */
+    .metric-link {
+      display: inline-block;
+      font-size: .6875rem;
+      font-weight: 600;
+      color: var(--primary);
+      margin-top: 4px;
+      cursor: pointer;
+    }
+    .metric-link:hover { text-decoration: underline; }
+
+    /* ─── Sub-abas (Lançamentos/Investimentos na conta; abas do cartão) ─── */
+    .subtabs-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--surface-alt);
+      border-radius: var(--radius-lg);
+      padding: 4px;
+      margin-bottom: 16px;
+      width: fit-content;
+    }
+    .subtab-btn {
+      padding: 8px 14px;
+      border-radius: var(--radius-md);
+      font-size: .8125rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+    .subtab-btn:hover { color: var(--text-primary); }
+    .subtab-btn.active { background: var(--surface); color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+
+    /* ─── Cartão vinculado clicável (PAT-06 a partir do PAT-05) ─── */
+    .cc-widget-btn { cursor: pointer; text-align: left; width: 100%; border: none; font: inherit; transition: transform var(--transition); }
+    .cc-widget-btn:hover { transform: translateY(-2px); }
+
+    .position-row-sub2 { font-size: .75rem; color: var(--text-muted); margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -450,26 +499,11 @@
 
         <div class="tabs-bar" id="tabs-bar"></div>
 
-        <div class="kpi-grid-3">
-          <div class="kpi-card-v2 balance">
-            <div class="kpi-label-v2">Saldo em contas</div>
-            <div class="kpi-value-v2" id="kpi-total-balance"><div class="skeleton sk" style="width:110px;height:24px"></div></div>
-            <div class="kpi-sub" id="kpi-total-balance-sub">&nbsp;</div>
-          </div>
-          <div class="kpi-card-v2 invoice">
-            <div class="kpi-label-v2">Faturas em aberto</div>
-            <div class="kpi-value-v2" id="kpi-open-invoices"><div class="skeleton sk" style="width:110px;height:24px"></div></div>
-            <div class="kpi-sub" id="kpi-open-invoices-sub">&nbsp;</div>
-          </div>
-          <div class="kpi-card-v2 limit">
-            <div class="kpi-label-v2">Limite disponível</div>
-            <div class="kpi-value-v2" id="kpi-avail-limit"><div class="skeleton sk" style="width:110px;height:24px"></div></div>
-            <div class="kpi-sub" id="kpi-avail-limit-sub">&nbsp;</div>
-          </div>
-        </div>
+        <!-- PAT-01/03/04 — 3 cards de resumo, clicáveis -->
+        <div class="summary-grid" id="summary-grid"></div>
 
-        <div class="accounts-grid" id="accounts-grid"></div>
-        <div class="empty-block" id="overview-empty" style="display:none"></div>
+        <!-- PAT-02/03/04 — expansão do card ativo -->
+        <div class="expansion-panel" id="expansion-panel"></div>
       </div>
 
       <!-- ═══ DETALHE DA CONTA ═══ -->
@@ -523,29 +557,351 @@
 
         <div class="cc-widgets" id="detail-cards"></div>
 
+        <!-- PAT-05 — sub-abas Lançamentos / Investimentos -->
+        <div class="subtabs-bar" id="detail-subtabs">
+          <button class="subtab-btn active" id="subtab-lancamentos" onclick="setDetailSubtab('lancamentos')">Lançamentos</button>
+          <button class="subtab-btn" id="subtab-investimentos" onclick="setDetailSubtab('investimentos')">Investimentos</button>
+        </div>
+
+        <div id="detail-lancamentos-panel">
+          <div class="table-card">
+            <div class="table-header-row">
+              <span class="table-count" id="detail-count">—</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:90px">Data</th>
+                  <th>Descrição</th>
+                  <th style="width:160px">Pagamento</th>
+                  <th style="width:130px;text-align:right">Valor</th>
+                </tr>
+              </thead>
+              <tbody id="detail-tbody"></tbody>
+            </table>
+            <div id="detail-empty" class="empty-table" style="display:none">
+              Nenhum lançamento nesta conta neste mês.
+            </div>
+          </div>
+        </div>
+
+        <div id="detail-investimentos-panel" style="display:none">
+          <div class="panel-section">
+            <div class="panel-section-header">
+              <span class="panel-section-title">Investimentos nesta conta</span>
+            </div>
+            <div class="panel-list" id="detail-positions-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ DETALHE DO CARTÃO (PAT-06) ═══ -->
+      <div id="card-detail-view" style="display:none">
+        <div class="detail-header">
+          <button class="btn-back" id="btn-back-card">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m15 18-6-6 6-6"/>
+            </svg>
+            Voltar
+          </button>
+          <div>
+            <h1 style="font-size:1.25rem;font-weight:800;color:var(--text-primary)" id="card-detail-name">—</h1>
+            <p style="font-size:.8125rem;color:var(--text-muted)" id="card-detail-sub">—</p>
+          </div>
+        </div>
+
+        <div class="subtabs-bar" id="card-detail-tabs">
+          <button class="subtab-btn active" onclick="setCardDetailTab('atual')">Fatura atual</button>
+          <button class="subtab-btn" onclick="setCardDetailTab('gasto')">Total gasto / dívida</button>
+          <button class="subtab-btn" onclick="setCardDetailTab('limite')">Limite restante</button>
+        </div>
+
+        <div class="kpi-grid-3" id="card-detail-stats"></div>
+
         <div class="table-card">
           <div class="table-header-row">
-            <span class="table-count" id="detail-count">—</span>
+            <span class="table-count" id="card-detail-count">—</span>
+            <select class="input select" id="card-detail-period-filter" style="width:auto;max-width:220px"></select>
           </div>
           <table>
             <thead>
               <tr>
                 <th style="width:90px">Data</th>
                 <th>Descrição</th>
-                <th style="width:160px">Pagamento</th>
+                <th style="width:140px">Fatura</th>
                 <th style="width:130px;text-align:right">Valor</th>
               </tr>
             </thead>
-            <tbody id="detail-tbody"></tbody>
+            <tbody id="card-detail-tbody"></tbody>
           </table>
-          <div id="detail-empty" class="empty-table" style="display:none">
-            Nenhum lançamento nesta conta neste mês.
+          <div id="card-detail-empty" class="empty-table" style="display:none">
+            Nenhum lançamento neste cartão.
           </div>
+        </div>
+      </div>
+
+      <!-- ═══ INVESTIMENTOS — VISÃO GERAL (PAT-07) ═══ -->
+      <div id="investments-view" style="display:none">
+        <div class="detail-header">
+          <button class="btn-back" id="btn-back-investments">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m15 18-6-6 6-6"/>
+            </svg>
+            Voltar
+          </button>
+          <div>
+            <h1 style="font-size:1.25rem;font-weight:800;color:var(--text-primary)">Investimentos</h1>
+            <p style="font-size:.8125rem;color:var(--text-muted)" id="investments-sub">—</p>
+          </div>
+        </div>
+
+        <div class="kpi-grid-3" id="investments-stats"></div>
+
+        <div class="panel-section">
+          <div class="panel-section-header">
+            <span class="panel-section-title">Posições</span>
+          </div>
+          <div class="panel-list" id="investments-positions-list"></div>
         </div>
       </div>
 
     </div>
   </main>
+</div>
+
+<!-- ═══ MODAL NOVO / EDITAR BEM ═══ -->
+<div class="modal-overlay" id="modal-asset">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-asset-title">Novo bem</span>
+      <button class="btn-ghost btn-icon modal-close" id="modal-asset-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-form-grid">
+      <div class="form-group full">
+        <label class="form-label">Nome do bem</label>
+        <input class="input" type="text" id="asset-name" placeholder="Ex: Apartamento, Carro…" maxlength="80" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Categoria <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <input class="input" type="text" id="asset-category" placeholder="Ex: Imóvel, Veículo…" maxlength="40" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Valor de mercado</label>
+        <div class="input-prefix">
+          <span class="prefix-label">R$</span>
+          <input class="input" type="number" id="asset-value" placeholder="0,00" min="0" step="0.01" />
+        </div>
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Financiamento vinculado <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <select class="input select" id="asset-loan"><option value="">Nenhum</option></select>
+        <span class="form-hint">Valor líquido = valor de mercado − saldo devedor do financiamento.</span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Titularidade</label>
+        <select class="input select" id="asset-owner-type">
+          <option value="joint">Conjunta</option>
+          <option value="individual">Individual</option>
+        </select>
+      </div>
+      <div class="form-group" id="asset-owner-member-group">
+        <label class="form-label">De quem</label>
+        <select class="input select" id="asset-owner-member"></select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:24px">
+      <button class="btn btn-secondary btn-full" id="modal-asset-cancel">Cancelar</button>
+      <button class="btn btn-primary btn-full" id="modal-asset-save">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TICKET DO BEM ═══ -->
+<div class="modal-overlay" id="modal-asset-ticket">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title" id="ticket-asset-name">—</span>
+      <div style="display:flex;gap:4px">
+        <button class="icon-btn" title="Editar" id="ticket-asset-edit">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
+        <button class="icon-btn danger" title="Excluir" id="ticket-asset-delete">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+          </svg>
+        </button>
+        <button class="btn-ghost btn-icon modal-close" id="modal-asset-ticket-close">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="ticket-grid" id="ticket-asset-body"></div>
+  </div>
+</div>
+
+<!-- ═══ MODAL NOVO FINANCIAMENTO ═══ -->
+<div class="modal-overlay" id="modal-loan">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Novo financiamento</span>
+      <button class="btn-ghost btn-icon modal-close" id="modal-loan-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-form-grid">
+      <div class="form-group full">
+        <label class="form-label">Nome</label>
+        <input class="input" type="text" id="loan-name" placeholder="Ex: Financiamento do carro" maxlength="80" />
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Conta que paga a parcela</label>
+        <select class="input select" id="loan-account"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Valor financiado</label>
+        <div class="input-prefix">
+          <span class="prefix-label">R$</span>
+          <input class="input" type="number" id="loan-value" placeholder="0,00" min="0.01" step="0.01" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Taxa mensal (%)</label>
+        <input class="input" type="number" id="loan-rate" placeholder="Ex: 1,35" min="0" step="0.01" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prazo (parcelas)</label>
+        <input class="input" type="number" id="loan-term" placeholder="Ex: 48" min="1" step="1" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data da 1ª parcela</label>
+        <input class="input" type="date" id="loan-start-date" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Titularidade</label>
+        <select class="input select" id="loan-owner-type">
+          <option value="joint">Conjunta</option>
+          <option value="individual">Individual</option>
+        </select>
+      </div>
+      <div class="form-group" id="loan-owner-member-group">
+        <label class="form-label">De quem</label>
+        <select class="input select" id="loan-owner-member"></select>
+      </div>
+      <div class="form-group full" id="loan-preview" style="display:none"></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:24px">
+      <button class="btn btn-secondary btn-full" id="modal-loan-cancel">Cancelar</button>
+      <button class="btn btn-primary btn-full" id="modal-loan-save">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TICKET DO FINANCIAMENTO ═══ -->
+<div class="modal-overlay" id="modal-loan-ticket">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title" id="ticket-loan-name">—</span>
+      <div style="display:flex;gap:4px">
+        <button class="icon-btn danger" title="Excluir" id="ticket-loan-delete">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+          </svg>
+        </button>
+        <button class="btn-ghost btn-icon modal-close" id="modal-loan-ticket-close">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="ticket-grid" id="ticket-loan-body"></div>
+  </div>
+</div>
+
+<!-- ═══ MODAL CONFIRMAR EXCLUSÃO ═══ -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-confirm-title">Excluir</span>
+      <button class="modal-close" id="modal-confirm-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <p style="font-size:.9375rem;color:var(--text-secondary);line-height:1.5;padding:4px 0 8px" id="modal-confirm-text">Tem certeza?</p>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn btn-secondary btn-full" id="modal-confirm-cancel">Cancelar</button>
+      <button class="btn btn-danger btn-full" id="modal-confirm-ok">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL EDITAR POSIÇÃO DE INVESTIMENTO (PAT-07) ═══ -->
+<div class="modal-overlay" id="modal-position">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-position-title">Editar posição</span>
+      <button class="btn-ghost btn-icon modal-close" id="modal-position-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-form-grid">
+      <div class="form-group full">
+        <label class="form-label">Nome</label>
+        <input class="input" type="text" id="position-name" placeholder="Ex: CDB Banco X, Tesouro Selic…" maxlength="80" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <input class="input" type="text" id="position-tipo" placeholder="Ex: CDB, Tesouro…" maxlength="40" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Vencimento <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <input class="input" type="date" id="position-vencimento" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Rendimento mensal (%) <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <input class="input" type="number" id="position-taxa" placeholder="Ex: 0,90" min="0" step="0.01" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Já rendeu (R$) <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <input class="input" type="number" id="position-rendimento" placeholder="0,00" min="0" step="0.01" />
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Valor aplicado</label>
+        <div class="input" id="position-valor-aplicado-readonly" style="background:var(--slate-50);color:var(--text-secondary)">—</div>
+        <span class="form-hint">Só muda por transferência em Lançamentos — não é editável aqui.</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:24px">
+      <button class="btn btn-secondary btn-full" id="modal-position-cancel">Cancelar</button>
+      <button class="btn btn-primary btn-full" id="modal-position-save">Salvar</button>
+    </div>
+  </div>
 </div>
 
 <div id="toast-container"></div>
@@ -565,8 +921,21 @@
   let allInvoices        = [];
   let allInvoicePayments = [];
   let allTx              = []; // TODAS as transações do household (saldo é acumulado desde o início)
+  let allInvestmentPositions = []; // posições de investimento (Sprint 2 — D1)
+  let allLoans           = []; // financiamentos (D2)
+  let allAssets          = []; // bens materiais (D2)
   let activeTab          = 'mine';   // 'mine' | 'partner' | 'joint'
+  let activeCard         = 'financeiro'; // 'financeiro' | 'bens' | 'dividas' (PAT-01..04)
   let detailAccountId    = null;
+  let editingAssetId     = null;
+  let viewingAssetId     = null;
+  let viewingLoanId      = null;
+  let pendingConfirmAction = null;
+  let detailSubtab       = 'lancamentos'; // 'lancamentos' | 'investimentos' (PAT-05)
+  let editingPositionId  = null;          // posição sendo editada (PAT-07)
+  let cardDetailId       = null;          // cartão aberto no PAT-06
+  let cardDetailTab      = 'atual';       // 'atual' | 'gasto' | 'limite'
+  let cardDetailPeriod   = null;          // period (YYYY-MM) pré-selecionado via deep-link (LAN-02), ou null = todos
   /* Normalizado para o dia 1: setMonth() em dia 29-31 pularia meses */
   let detailDate         = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
@@ -633,6 +1002,89 @@
       .filter(i => i.credit_card_id === card.id && i.status === 'closed')
       .reduce((s, i) => s + Math.max(0, invoiceComputedTotal(i.id) - invoicePaidSum(i.id)), 0);
   }
+  /* Soma de todas as faturas em aberto (não pagas) do cartão — usada no card Dívidas (PAT-04) */
+  function cardOpenInvoiceTotal(card) {
+    return allInvoices
+      .filter(i => i.credit_card_id === card.id && i.status !== 'paid')
+      .reduce((s, i) => s + Math.max(0, invoiceComputedTotal(i.id) - invoicePaidSum(i.id)), 0);
+  }
+  /* Total gasto (vitalício) no cartão — soma de todas as compras já feitas nele */
+  function cardTotalSpent(card) {
+    return allTx
+      .filter(t => t.credit_card_id === card.id && t.direction === 'expense')
+      .reduce((s, t) => s + Number(t.amount), 0);
+  }
+
+  /* ── FINANCIAMENTOS (D2) ──
+     saldo_devedor e parcelas pagas nunca são lidos da coluna "ao vivo": são
+     sempre derivados de quantos lançamentos com loan_id já existem + a
+     fórmula de amortização Price (js/finance-model.js) — a mesma lógica
+     usada para calcular a parcela na criação. Fonte única de verdade. */
+  function loanInstallmentsGenerated(loan) {
+    return allTx.filter(t => t.loan_id === loan.id).length;
+  }
+  function loanOutstanding(loan) {
+    if (!loan) return 0;
+    return FinanceModel.outstandingLoanBalance(loan.valor_total, loan.taxa, loan.prazo, loanInstallmentsGenerated(loan));
+  }
+  function dateToISOParts(y, mIdx, d) {
+    return `${y}-${String(mIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
+  /* Gera (lazy, ao carregar a página) os lançamentos de parcela que já
+     deveriam existir entre data_inicio do financiamento e hoje — mesmo
+     padrão de "criação sob demanda" usado para faturas em lancamentos.html. */
+  async function ensureLoanInstallments() {
+    const todayIso = todayISO();
+    const rowsToInsert = [];
+
+    for (const loan of allLoans) {
+      const alreadyGenerated = loanInstallmentsGenerated(loan);
+      if (alreadyGenerated >= loan.prazo) continue; // já quitado
+
+      const [sy, sm, sd] = loan.data_inicio.split('-').map(Number);
+      let due = 0;
+      for (let k = 0; k < loan.prazo; k++) {
+        const d = new Date(sy, sm - 1 + k, 1);
+        const iso = dateToISOParts(d.getFullYear(), d.getMonth(), clampDayToMonth(d.getFullYear(), d.getMonth(), sd));
+        if (iso <= todayIso) due = k + 1; else break;
+      }
+      if (due <= alreadyGenerated) continue;
+
+      for (let n = alreadyGenerated + 1; n <= due; n++) {
+        const d = new Date(sy, sm - 1 + (n - 1), 1);
+        const iso = dateToISOParts(d.getFullYear(), d.getMonth(), clampDayToMonth(d.getFullYear(), d.getMonth(), sd));
+        rowsToInsert.push({
+          household_id: householdId,
+          account_id: loan.account_id,
+          member_id: loan.owner_type === 'joint' ? null : loan.member_id,
+          loan_id: loan.id,
+          direction: 'expense',
+          amount: loan.parcela_mensal,
+          description: `Parcela ${n}/${loan.prazo} — ${loan.name}`,
+          date: iso,
+          classification: 'Financiamentos',
+          payment_method: 'financiamento',
+        });
+      }
+    }
+
+    if (rowsToInsert.length === 0) return;
+
+    const { data: inserted, error } = await _supabase.from('transactions').insert(rowsToInsert).select();
+    if (error) { toast('Erro ao gerar parcelas de financiamento: ' + error.message, 'error'); return; }
+    allTx = allTx.concat(inserted || rowsToInsert);
+
+    // Sincroniza a coluna saldo_devedor (persistida) dos financiamentos afetados
+    const affectedLoanIds = [...new Set(rowsToInsert.map(r => r.loan_id))];
+    for (const loanId of affectedLoanIds) {
+      const loan = allLoans.find(l => l.id === loanId);
+      if (!loan) continue;
+      const saldo = loanOutstanding(loan);
+      loan.saldo_devedor = saldo;
+      await _supabase.from('loans').update({ saldo_devedor: saldo, updated_at: new Date().toISOString() }).eq('id', loanId);
+    }
+  }
 
   /* ── Saldo atual da conta (regra decidida em 17/06 + contabilização de cartão) ──
      saldo = accounts.balance (inicial) + soma das transações da conta,
@@ -661,25 +1113,30 @@
     myMemberId  = member.id;
 
     /* Queries separadas, nunca join (regra do projeto — RLS silencioso) */
-    const [hhRes, membersRes, accountsRes, txRes] = await Promise.all([
+    const [hhRes, membersRes, accountsRes, txRes, loansRes, assetsRes] = await Promise.all([
       _supabase.from('households').select('name').eq('id', householdId).maybeSingle(),
       _supabase.from('members').select('*').eq('household_id', householdId),
       _supabase.from('accounts').select('*').eq('household_id', householdId).order('created_at', { ascending: true }),
       _supabase.from('transactions').select('*').eq('household_id', householdId),
+      _supabase.from('loans').select('*').eq('household_id', householdId).order('created_at', { ascending: true }),
+      _supabase.from('assets').select('*').eq('household_id', householdId).order('created_at', { ascending: true }),
     ]);
     document.getElementById('couple-name-text').textContent = hhRes.data?.name || 'Nosso Casal';
     allMembers  = membersRes.data || [];
     allAccounts = accountsRes.data || [];
     allTx       = txRes.data || [];
+    allLoans    = loansRes.data || [];
+    allAssets   = assetsRes.data || [];
     partnerMemberId = allMembers.find(m => m.id !== myMemberId)?.id || null;
 
     const accountIds = allAccounts.map(a => a.id);
     if (accountIds.length > 0) {
-      const { data: cards } = await _supabase
-        .from('credit_cards').select('*')
-        .in('account_id', accountIds)
-        .order('created_at', { ascending: true });
+      const [{ data: cards }, { data: positions }] = await Promise.all([
+        _supabase.from('credit_cards').select('*').in('account_id', accountIds).order('created_at', { ascending: true }),
+        _supabase.from('investment_positions').select('*').in('account_id', accountIds),
+      ]);
       allCreditCards = cards || [];
+      allInvestmentPositions = positions || [];
     }
     const cardIds = allCreditCards.map(c => c.id);
     if (cardIds.length > 0) {
@@ -696,8 +1153,21 @@
       allInvoicePayments = pays || [];
     }
 
+    await ensureLoanInstallments();
+
     renderTabs();
-    renderOverview();
+    renderSummary();
+    renderExpansion();
+
+    /* Deep-link (LAN-02): patrimonio.html?view=card&cardId=X&period=Y abre
+       direto o detalhe do cartão naquela fatura; ?view=investments abre a
+       visão geral de investimentos (PAT-07). */
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('view') === 'card' && params.get('cardId')) {
+      openCardDetail(params.get('cardId'), params.get('period') || null);
+    } else if (params.get('view') === 'investments') {
+      openInvestmentsView();
+    }
   })();
 
   /* ── ABAS (ordem: quem logou primeiro → parceiro → conjuntas) ── */
@@ -726,83 +1196,198 @@
   function switchTab(key) {
     activeTab = key;
     renderTabs();
-    renderOverview();
+    renderSummary();
+    renderExpansion();
   }
 
-  /* ── VISÃO GERAL ── */
-  function renderOverview() {
+  /* ── PAT-01/03/04 — 3 CARDS DE RESUMO ── */
+  function setActiveCard(card) {
+    activeCard = card;
+    renderSummary();
+    renderExpansion();
+  }
+
+  function renderSummary() {
     const accounts = allAccounts.filter(a => accountBucket(a) === activeTab);
+    const positions = allInvestmentPositions.filter(p => accounts.some(a => a.id === p.account_id));
     const cardsOfTab = allCreditCards.filter(c => accounts.some(a => a.id === c.account_id));
+    const loans = allLoans.filter(l => accountBucket(l) === activeTab);
+    const assets = allAssets.filter(a => accountBucket(a) === activeTab);
 
+    /* Financeiro (PAT-01/02) */
     const totalBalance = accounts.reduce((s, a) => s + accountCurrentBalance(a), 0);
-    const openInvoices = cardsOfTab.reduce((s, c) => s + allInvoices
-      .filter(i => i.credit_card_id === c.id && i.status !== 'paid')
-      .reduce((ss, i) => ss + Math.max(0, invoiceComputedTotal(i.id) - invoicePaidSum(i.id)), 0), 0);
-    const availLimit = cardsOfTab.reduce((s, c) => s + cardAvailableLimit(c), 0);
-    const totalLimit = cardsOfTab.reduce((s, c) => s + Number(c.credit_limit || 0), 0);
+    const totalInvested = positions.reduce((s, p) => s + Number(p.valor_aplicado || 0), 0);
+    const accountsWithInvestment = new Set(
+      positions.filter(p => Number(p.valor_aplicado || 0) > 0.004).map(p => p.account_id)
+    ).size;
 
-    document.getElementById('kpi-total-balance').textContent = fmtBRL(totalBalance);
-    document.getElementById('kpi-total-balance-sub').textContent =
-      `${accounts.length} conta${accounts.length !== 1 ? 's' : ''}`;
-    document.getElementById('kpi-open-invoices').textContent = fmtBRL(openInvoices);
-    document.getElementById('kpi-open-invoices-sub').textContent =
-      `${cardsOfTab.length} cartã${cardsOfTab.length !== 1 ? 'es' : 'o'} · inclui parcelas futuras`;
-    document.getElementById('kpi-avail-limit').textContent = fmtBRL(availLimit);
-    document.getElementById('kpi-avail-limit-sub').textContent =
-      totalLimit > 0 ? `de ${fmtBRL(totalLimit)} no total` : 'nenhum cartão nesta aba';
+    /* Bens Materiais (PAT-03) — valor líquido = mercado − saldo devedor vinculado (D2) */
+    const assetsTotal = assets.reduce((s, a) =>
+      s + FinanceModel.assetNetWorth(a.valor_mercado, loanOutstanding(allLoans.find(l => l.id === a.loan_id))), 0);
 
-    const grid  = document.getElementById('accounts-grid');
-    const empty = document.getElementById('overview-empty');
+    /* Dívidas (PAT-04) */
+    const loansOutstandingTotal = loans.reduce((s, l) => s + loanOutstanding(l), 0);
+    const openInvoicesTotal = cardsOfTab.reduce((s, c) => s + cardOpenInvoiceTotal(c), 0);
+    const dividasTotal = loansOutstandingTotal + openInvoicesTotal;
+
+    document.getElementById('summary-grid').innerHTML = `
+      <div class="summary-card ${activeCard === 'financeiro' ? 'active' : ''}" onclick="setActiveCard('financeiro')" role="button" tabindex="0">
+        <div class="summary-card-title">💰 Financeiro</div>
+        <div class="summary-metric">
+          <div class="summary-metric-label">Saldo em contas</div>
+          <div class="summary-metric-value">${fmtBRL(totalBalance)}</div>
+          <div class="summary-metric-sub">${accounts.length} conta${accounts.length !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="summary-metric">
+          <div class="summary-metric-label">Saldo em investimentos</div>
+          <div class="summary-metric-value">${fmtBRL(totalInvested)}</div>
+          <div class="summary-metric-sub">${accountsWithInvestment} conta${accountsWithInvestment !== 1 ? 's' : ''}</div>
+          <span class="metric-link" onclick="event.stopPropagation(); openInvestmentsView();">Ver detalhes (PAT-07) →</span>
+        </div>
+      </div>
+      <div class="summary-card ${activeCard === 'bens' ? 'active' : ''}" onclick="setActiveCard('bens')" role="button" tabindex="0">
+        <div class="summary-card-title">🏠 Bens Materiais</div>
+        <div class="summary-metric">
+          <div class="summary-metric-label">Total (valor líquido)</div>
+          <div class="summary-metric-value">${fmtBRL(assetsTotal)}</div>
+          <div class="summary-metric-sub">${assets.length} be${assets.length !== 1 ? 'ns' : 'm'}</div>
+        </div>
+      </div>
+      <div class="summary-card ${activeCard === 'dividas' ? 'active' : ''}" onclick="setActiveCard('dividas')" role="button" tabindex="0">
+        <div class="summary-card-title">⚠️ Dívidas</div>
+        <div class="summary-metric">
+          <div class="summary-metric-label">Total</div>
+          <div class="summary-metric-value">${fmtBRL(dividasTotal)}</div>
+          <div class="summary-metric-sub">${fmtBRL(loansOutstandingTotal)} financiamentos · ${fmtBRL(openInvoicesTotal)} faturas</div>
+        </div>
+      </div>
+    `;
+  }
+
+  /* ── EXPANSÃO DO CARD ATIVO ── */
+  function renderExpansion() {
+    const panel = document.getElementById('expansion-panel');
+    if (activeCard === 'bens') panel.innerHTML = renderBensExpansion();
+    else if (activeCard === 'dividas') panel.innerHTML = renderDividasExpansion();
+    else panel.innerHTML = renderFinanceiroExpansion();
+  }
+
+  /* PAT-02 — expansão do Financeiro: contas com disponível/investido/fatura */
+  function renderFinanceiroExpansion() {
+    const accounts = allAccounts.filter(a => accountBucket(a) === activeTab);
     if (accounts.length === 0) {
-      grid.innerHTML = '';
-      empty.style.display = 'block';
-      empty.textContent = activeTab === 'joint'
-        ? 'Nenhuma conta conjunta cadastrada. Crie contas em Configurações → Contas bancárias.'
-        : 'Nenhuma conta individual nesta aba. Vincule contas a um titular em Configurações → Contas bancárias.';
-      return;
+      return `<div class="panel-section"><div class="panel-section-header"><span class="panel-section-title">Contas</span></div>
+        <div class="panel-empty">${activeTab === 'joint'
+          ? 'Nenhuma conta conjunta cadastrada. Crie contas em Configurações → Contas bancárias.'
+          : 'Nenhuma conta individual nesta aba. Vincule contas a um titular em Configurações → Contas bancárias.'}</div></div>`;
     }
-    empty.style.display = 'none';
-    grid.innerHTML = accounts.map(acc => {
+    const rows = accounts.map(acc => {
       const meta = ACC_TYPE_META[acc.account_type] || ACC_TYPE_META['checking'];
-      const owner = allMembers.find(m => m.id === acc.member_id);
-      const ownerLabel = acc.owner_type === 'joint' ? 'Conjunta' : (owner?.name?.split(' ')[0] || 'Individual');
-      const balance = accountCurrentBalance(acc);
+      const disponivel = accountCurrentBalance(acc);
+      const investido = allInvestmentPositions
+        .filter(p => p.account_id === acc.id)
+        .reduce((s, p) => s + Number(p.valor_aplicado || 0), 0);
       const cards = allCreditCards.filter(c => c.account_id === acc.id);
-      const cardsHtml = cards.length === 0 ? '' : `
-        <div class="account-cards-list">
-          ${cards.map(c => {
-            const unpaidClosed = cardUnpaidClosed(c);
-            return `
-              <div class="account-cc-row">
-                <span class="cc-name">💳 ${escHtml(c.name)}</span>
-                <span>
-                  Fatura ${fmtBRL(cardCurrentInvoiceTotal(c))} · Disp. ${fmtBRL(cardAvailableLimit(c))}
-                  ${unpaidClosed > 0.004 ? `<span class="cc-alert"> · ${fmtBRL(unpaidClosed)} a pagar</span>` : ''}
-                </span>
-              </div>`;
-          }).join('')}
-        </div>`;
+      const faturaAberta = cards.reduce((s, c) => s + cardOpenInvoiceTotal(c), 0);
+      const subParts = [`${fmtBRL(disponivel)} disponível`, `${fmtBRL(investido)} investido`];
+      if (faturaAberta > 0.004) subParts.push(`${fmtBRL(faturaAberta)} fatura`);
       return `
-        <button class="account-card" onclick="openDetail('${acc.id}')">
-          <div class="account-card-head">
-            <div class="account-emoji" style="background:${meta.bg}">${meta.emoji}</div>
-            <div>
-              <div class="account-name">${escHtml(acc.name)}</div>
-              <div class="account-sub">${meta.label} · ${escHtml(ownerLabel)}</div>
-            </div>
+        <button class="panel-row" onclick="openDetail('${acc.id}')">
+          <div class="panel-row-main">
+            <div class="panel-row-name">${meta.emoji} ${escHtml(acc.name)}</div>
+            <div class="panel-row-sub">${subParts.join(' · ')}</div>
           </div>
-          <div class="account-balance-label">Saldo atual</div>
-          <div class="account-balance ${balance < 0 ? 'negative' : ''}">${fmtBRL(balance)}</div>
-          ${cardsHtml}
+          <div class="panel-row-value">${fmtBRL(disponivel + investido)}</div>
         </button>`;
     }).join('');
+    return `<div class="panel-section"><div class="panel-section-header"><span class="panel-section-title">Contas</span></div>
+      <div class="panel-list">${rows}</div></div>`;
+  }
+
+  /* PAT-03 — expansão de Bens Materiais: cadastro + lista + ticket */
+  function renderBensExpansion() {
+    const assets = allAssets.filter(a => accountBucket(a) === activeTab);
+    const header = `<div class="panel-section-header">
+      <span class="panel-section-title">Bens Materiais</span>
+      <button class="btn btn-primary btn-sm" onclick="openAssetModal()">+ Novo bem</button>
+    </div>`;
+    if (assets.length === 0) {
+      return `<div class="panel-section">${header}<div class="panel-empty">Nenhum bem cadastrado nesta aba.</div></div>`;
+    }
+    const rows = assets.map(a => {
+      const loan = allLoans.find(l => l.id === a.loan_id);
+      const outstanding = loanOutstanding(loan);
+      const net = FinanceModel.assetNetWorth(a.valor_mercado, outstanding);
+      const subParts = [];
+      if (a.category) subParts.push(escHtml(a.category));
+      subParts.push(loan ? `financiado — saldo devedor ${fmtBRL(outstanding)}` : 'sem financiamento');
+      return `
+        <button class="panel-row" onclick="openAssetTicket('${a.id}')">
+          <div class="panel-row-main">
+            <div class="panel-row-name">${escHtml(a.name)}</div>
+            <div class="panel-row-sub">${subParts.join(' · ')}</div>
+          </div>
+          <div class="panel-row-value">${fmtBRL(net)}</div>
+        </button>`;
+    }).join('');
+    return `<div class="panel-section">${header}<div class="panel-list">${rows}</div></div>`;
+  }
+
+  /* PAT-04 — expansão de Dívidas: financiamentos (drill-down) + cartões (resumo) */
+  function renderDividasExpansion() {
+    const loans = allLoans.filter(l => accountBucket(l) === activeTab);
+    const accounts = allAccounts.filter(a => accountBucket(a) === activeTab);
+    const cards = allCreditCards.filter(c => accounts.some(a => a.id === c.account_id));
+
+    const loanHeader = `<div class="panel-section-header">
+      <span class="panel-section-title">Financiamentos</span>
+      <button class="btn btn-primary btn-sm" onclick="openLoanModal()">+ Novo financiamento</button>
+    </div>`;
+    const loanRows = loans.length === 0
+      ? `<div class="panel-empty">Nenhum financiamento nesta aba.</div>`
+      : loans.map(l => {
+          const generated = loanInstallmentsGenerated(l);
+          const outstanding = loanOutstanding(l);
+          const pct = Math.min(100, (generated / l.prazo) * 100);
+          const quitado = outstanding <= 0.004;
+          return `
+            <button class="panel-row" style="flex-direction:column;align-items:stretch;gap:8px" onclick="openLoanTicket('${l.id}')">
+              <div style="display:flex;justify-content:space-between;width:100%;gap:14px">
+                <div class="panel-row-main">
+                  <div class="panel-row-name">${escHtml(l.name)}${quitado ? ' <span class="badge badge-green">quitado</span>' : ''}</div>
+                  <div class="panel-row-sub">Parcela ${fmtBRL(l.parcela_mensal)} · ${generated}/${l.prazo} pagas</div>
+                </div>
+                <div class="panel-row-value">${quitado ? '—' : fmtBRL(outstanding)}</div>
+              </div>
+              <div class="mini-progress"><div class="mini-progress-fill" style="width:${pct}%"></div></div>
+            </button>`;
+        }).join('');
+
+    const cardHeader = `<div class="panel-section-header"><span class="panel-section-title">Cartões de crédito</span></div>`;
+    const cardRows = cards.length === 0
+      ? `<div class="panel-empty">Nenhum cartão nesta aba.</div>`
+      : cards.map(c => `
+          <button class="panel-row" onclick="openCardDetail('${c.id}')">
+            <div class="panel-row-main">
+              <div class="panel-row-name">💳 ${escHtml(c.name)}</div>
+              <div class="panel-row-sub">Total gasto ${fmtBRL(cardTotalSpent(c))} · Fatura atual ${fmtBRL(cardCurrentInvoiceTotal(c))}</div>
+            </div>
+            <div class="panel-row-value">Disp. ${fmtBRL(cardAvailableLimit(c))}</div>
+          </button>`).join('');
+
+    return `
+      <div class="panel-section">${loanHeader}<div class="panel-list">${loanRows}</div></div>
+      <div class="panel-section">${cardHeader}<div class="panel-list">${cardRows}</div></div>`;
   }
 
   /* ── DETALHE DA CONTA ── */
   function openDetail(accountId) {
     detailAccountId = accountId;
     detailDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    setDetailSubtab('lancamentos');
     document.getElementById('overview-view').style.display = 'none';
+    document.getElementById('investments-view').style.display = 'none';
+    document.getElementById('card-detail-view').style.display = 'none';
     document.getElementById('detail-view').style.display = '';
     renderDetail();
   }
@@ -811,7 +1396,8 @@
     detailAccountId = null;
     document.getElementById('detail-view').style.display = 'none';
     document.getElementById('overview-view').style.display = '';
-    renderOverview();
+    renderSummary();
+    renderExpansion();
   });
 
   document.getElementById('btn-prev-month').addEventListener('click', () => {
@@ -865,7 +1451,7 @@
       const barClass = pct >= 100 ? 'over' : (pct >= 75 ? 'warn' : '');
       const unpaidClosed = cardUnpaidClosed(c);
       return `
-        <div class="cc-widget">
+        <button class="cc-widget cc-widget-btn" onclick="openCardDetail('${c.id}')">
           <div class="ccw-name">💳 ${escHtml(c.name)}</div>
           <div class="ccw-row"><span>Fatura atual</span><strong>${fmtBRL(cardCurrentInvoiceTotal(c))}</strong></div>
           ${unpaidClosed > 0.004 ? `<div class="ccw-row"><span>Fechada a pagar</span><strong style="color:#fb7185">${fmtBRL(unpaidClosed)}</strong></div>` : ''}
@@ -873,7 +1459,7 @@
           <div class="ccw-row"><span>Limite</span><strong>${fmtBRL(limit)}</strong></div>
           <div class="ccw-bar"><div class="ccw-bar-fill ${barClass}" style="width:${pct}%"></div></div>
           <div class="ccw-row" style="margin-top:8px"><span>Fecha dia ${c.closing_day} · vence dia ${c.due_day}</span></div>
-        </div>`;
+        </button>`;
     }).join('');
 
     /* Tabela do mês */
@@ -908,7 +1494,640 @@
           </td>
         </tr>`;
     }).join('');
+
+    renderDetailPositions(acc);
   }
+
+  /* ── PAT-05 — sub-abas Lançamentos / Investimentos ── */
+  function setDetailSubtab(tab) {
+    detailSubtab = tab;
+    document.getElementById('subtab-lancamentos').classList.toggle('active', tab === 'lancamentos');
+    document.getElementById('subtab-investimentos').classList.toggle('active', tab === 'investimentos');
+    document.getElementById('detail-lancamentos-panel').style.display = tab === 'lancamentos' ? '' : 'none';
+    document.getElementById('detail-investimentos-panel').style.display = tab === 'investimentos' ? '' : 'none';
+  }
+
+  function renderDetailPositions(acc) {
+    const positions = allInvestmentPositions.filter(p => p.account_id === acc.id);
+    document.getElementById('detail-positions-list').innerHTML = renderPositionRows(positions, { showAccount: false });
+  }
+
+  /* ══════════════════════════════════════════════
+     POSIÇÕES DE INVESTIMENTO (PAT-07 / D1) — lista compartilhada
+     entre a aba da conta (PAT-05) e a visão geral (PAT-07).
+     ══════════════════════════════════════════════ */
+  function renderPositionRows(positions, { showAccount } = { showAccount: true }) {
+    if (positions.length === 0) {
+      return `<div class="panel-empty">Nenhuma posição de investimento aqui ainda.</div>`;
+    }
+    return positions.map(p => {
+      const projecao = FinanceModel.investmentProjection({
+        valorAplicado: p.valor_aplicado,
+        rendimentoAcumulado: p.rendimento_acumulado,
+        taxaMensal: p.taxa,
+        vencimento: p.vencimento,
+        todayISO: todayISO(),
+      });
+      const subParts = [];
+      if (showAccount) {
+        const acc = allAccounts.find(a => a.id === p.account_id);
+        if (acc) subParts.push(escHtml(acc.name));
+      }
+      if (p.tipo) subParts.push(escHtml(p.tipo));
+      subParts.push(p.vencimento ? `vence ${fmtDate(p.vencimento)}` : 'sem vencimento (projeção 12m)');
+      if (p.taxa) {
+        const monthly = (Number(p.taxa) * 100).toFixed(2).replace('.', ',');
+        const annual = (FinanceModel.annualizedRate(p.taxa) * 100).toFixed(2).replace('.', ',');
+        subParts.push(`${monthly}% a.m. (${annual}% a.a.)`);
+      }
+      return `
+        <button class="panel-row" style="flex-direction:column;align-items:stretch;gap:4px" onclick="openPositionModal('${p.id}')">
+          <div style="display:flex;justify-content:space-between;width:100%;gap:14px">
+            <div class="panel-row-main">
+              <div class="panel-row-name">${escHtml(p.name)}${p.is_reserve ? ' <span class="badge badge-blue">reserva</span>' : ''}</div>
+              <div class="panel-row-sub">${subParts.join(' · ')}</div>
+            </div>
+            <div class="panel-row-value">${fmtBRL(p.valor_aplicado)}</div>
+          </div>
+          <div class="position-row-sub2">Rendeu ${fmtBRL(p.rendimento_acumulado)} até agora · projeção: ${fmtBRL(projecao)}</div>
+        </button>`;
+    }).join('');
+  }
+
+  function openPositionModal(id) {
+    editingPositionId = id;
+    const p = allInvestmentPositions.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById('modal-position-title').textContent = p.name;
+    document.getElementById('position-name').value = p.name || '';
+    document.getElementById('position-tipo').value = p.tipo || '';
+    document.getElementById('position-vencimento').value = p.vencimento || '';
+    document.getElementById('position-taxa').value = p.taxa != null ? Number(p.taxa) * 100 : '';
+    document.getElementById('position-rendimento').value = p.rendimento_acumulado ?? '';
+    document.getElementById('position-valor-aplicado-readonly').textContent = fmtBRL(p.valor_aplicado);
+    document.getElementById('modal-position').classList.add('open');
+  }
+  function closePositionModal() {
+    document.getElementById('modal-position').classList.remove('open');
+    editingPositionId = null;
+  }
+
+  async function savePosition() {
+    const name = document.getElementById('position-name').value.trim();
+    const tipo = document.getElementById('position-tipo').value.trim();
+    const vencimento = document.getElementById('position-vencimento').value || null;
+    const taxaPct = parseFloat(document.getElementById('position-taxa').value);
+    const rendimento = parseFloat(document.getElementById('position-rendimento').value);
+
+    if (!name) { toast('Informe o nome da posição.', 'error'); return; }
+
+    const payload = {
+      name,
+      tipo: tipo || null,
+      vencimento,
+      taxa: isNaN(taxaPct) ? 0 : taxaPct / 100,
+      rendimento_acumulado: isNaN(rendimento) ? 0 : rendimento,
+    };
+
+    const btn = document.getElementById('modal-position-save');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+    const { error } = await _supabase.from('investment_positions')
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq('id', editingPositionId).eq('household_id', householdId);
+    btn.classList.remove('btn-loading'); btn.disabled = false;
+
+    if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return; }
+
+    const idx = allInvestmentPositions.findIndex(p => p.id === editingPositionId);
+    if (idx >= 0) allInvestmentPositions[idx] = { ...allInvestmentPositions[idx], ...payload };
+
+    toast('Posição atualizada!', 'success');
+    closePositionModal();
+    renderSummary();
+    if (detailAccountId) renderDetail();
+    if (document.getElementById('investments-view').style.display !== 'none') renderInvestmentsView();
+  }
+
+  document.getElementById('modal-position-close').addEventListener('click', closePositionModal);
+  document.getElementById('modal-position-cancel').addEventListener('click', closePositionModal);
+  document.getElementById('modal-position-save').addEventListener('click', savePosition);
+  document.getElementById('modal-position').addEventListener('click', (e) => { if (e.target === e.currentTarget) closePositionModal(); });
+
+  /* ══════════════════════════════════════════════
+     PAT-07 — INVESTIMENTOS (visão geral, household-wide)
+     ══════════════════════════════════════════════ */
+  function openInvestmentsView() {
+    document.getElementById('overview-view').style.display = 'none';
+    document.getElementById('detail-view').style.display = 'none';
+    document.getElementById('card-detail-view').style.display = 'none';
+    document.getElementById('investments-view').style.display = '';
+    renderInvestmentsView();
+  }
+
+  document.getElementById('btn-back-investments').addEventListener('click', () => {
+    document.getElementById('investments-view').style.display = 'none';
+    document.getElementById('overview-view').style.display = '';
+    renderSummary();
+    renderExpansion();
+  });
+
+  function renderInvestmentsView() {
+    const accounts = allAccounts.filter(a => accountBucket(a) === activeTab);
+    const positions = allInvestmentPositions.filter(p => accounts.some(a => a.id === p.account_id));
+
+    const totalAplicado = positions.reduce((s, p) => s + Number(p.valor_aplicado || 0), 0);
+    const totalRendimento = positions.reduce((s, p) => s + Number(p.rendimento_acumulado || 0), 0);
+    const totalProjecao = positions.reduce((s, p) => s + FinanceModel.investmentProjection({
+      valorAplicado: p.valor_aplicado,
+      rendimentoAcumulado: p.rendimento_acumulado,
+      taxaMensal: p.taxa,
+      vencimento: p.vencimento,
+      todayISO: todayISO(),
+    }), 0);
+
+    document.getElementById('investments-sub').textContent =
+      `${positions.length} posiç${positions.length !== 1 ? 'ões' : 'ão'} nesta aba`;
+
+    document.getElementById('investments-stats').innerHTML = `
+      <div class="kpi-card-v2 balance">
+        <div class="kpi-label-v2">Valor investido</div>
+        <div class="kpi-value-v2">${fmtBRL(totalAplicado)}</div>
+        <div class="kpi-sub">${positions.length} posiç${positions.length !== 1 ? 'ões' : 'ão'}</div>
+      </div>
+      <div class="kpi-card-v2 income">
+        <div class="kpi-label-v2">Rendimento acumulado</div>
+        <div class="kpi-value-v2">${fmtBRL(totalRendimento)}</div>
+        <div class="kpi-sub">já rendido até agora</div>
+      </div>
+      <div class="kpi-card-v2 limit">
+        <div class="kpi-label-v2">Projeção</div>
+        <div class="kpi-value-v2">${fmtBRL(totalProjecao)}</div>
+        <div class="kpi-sub">no vencimento (ou 12 meses, sem vencimento)</div>
+      </div>
+    `;
+
+    document.getElementById('investments-positions-list').innerHTML = renderPositionRows(positions, { showAccount: true });
+  }
+
+  /* ══════════════════════════════════════════════
+     PAT-06 — DETALHE DO CARTÃO
+     ══════════════════════════════════════════════ */
+  function openCardDetail(cardId, period = null) {
+    cardDetailId = cardId;
+    cardDetailTab = 'atual';
+    cardDetailPeriod = period;
+    document.getElementById('overview-view').style.display = 'none';
+    document.getElementById('detail-view').style.display = 'none';
+    document.getElementById('investments-view').style.display = 'none';
+    document.getElementById('card-detail-view').style.display = '';
+    renderCardDetail();
+  }
+
+  document.getElementById('btn-back-card').addEventListener('click', () => {
+    document.getElementById('card-detail-view').style.display = 'none';
+    document.getElementById('overview-view').style.display = '';
+    renderSummary();
+    renderExpansion();
+  });
+
+  function setCardDetailTab(tab) {
+    cardDetailTab = tab;
+    renderCardDetail();
+  }
+
+  function renderCardDetail() {
+    const card = allCreditCards.find(c => c.id === cardDetailId);
+    if (!card) return;
+    const acc = allAccounts.find(a => a.id === card.account_id);
+
+    document.getElementById('card-detail-name').textContent = `💳 ${card.name}`;
+    document.getElementById('card-detail-sub').textContent = `Conta: ${acc?.name || '—'}`;
+
+    document.querySelectorAll('#card-detail-tabs .subtab-btn').forEach((btn, i) => {
+      const tabs = ['atual', 'gasto', 'limite'];
+      btn.classList.toggle('active', tabs[i] === cardDetailTab);
+    });
+
+    const limit = Number(card.credit_limit || 0);
+    const avail = cardAvailableLimit(card);
+    const used = limit - avail;
+    const pct = limit > 0 ? Math.min(100, Math.max(0, (used / limit) * 100)) : 0;
+
+    const cardInvoices = allInvoices.filter(i => i.credit_card_id === card.id).slice().sort((a, b) => b.period.localeCompare(a.period));
+    const currentPeriod = computeInvoicePeriod(card.closing_day, todayISO());
+    const currentInvoice = cardInvoices.find(i => i.period === currentPeriod);
+    const unpaidClosed = cardUnpaidClosed(card);
+
+    const statsEl = document.getElementById('card-detail-stats');
+    if (cardDetailTab === 'atual') {
+      const total = currentInvoice ? invoiceComputedTotal(currentInvoice.id) : 0;
+      statsEl.innerHTML = `
+        <div class="kpi-card-v2 balance">
+          <div class="kpi-label-v2">Fatura atual</div>
+          <div class="kpi-value-v2">${fmtBRL(total)}</div>
+          <div class="kpi-sub">${periodLabel(currentPeriod)}</div>
+        </div>
+        <div class="kpi-card-v2 income">
+          <div class="kpi-label-v2">Vencimento</div>
+          <div class="kpi-value-v2" style="font-size:1.125rem">${currentInvoice ? fmtDate(currentInvoice.due_date) : '—'}</div>
+          <div class="kpi-sub">fecha dia ${card.closing_day} · vence dia ${card.due_day}</div>
+        </div>
+        <div class="kpi-card-v2 expense">
+          <div class="kpi-label-v2">Fechadas a pagar</div>
+          <div class="kpi-value-v2">${fmtBRL(unpaidClosed)}</div>
+          <div class="kpi-sub">${unpaidClosed > 0.004 ? 'faturas fechadas ainda não pagas' : 'tudo em dia'}</div>
+        </div>`;
+    } else if (cardDetailTab === 'gasto') {
+      const openTotal = cardOpenInvoiceTotal(card);
+      statsEl.innerHTML = `
+        <div class="kpi-card-v2 balance">
+          <div class="kpi-label-v2">Total gasto (vitalício)</div>
+          <div class="kpi-value-v2">${fmtBRL(cardTotalSpent(card))}</div>
+          <div class="kpi-sub">soma de todas as compras já feitas</div>
+        </div>
+        <div class="kpi-card-v2 expense">
+          <div class="kpi-label-v2">Dívida em aberto</div>
+          <div class="kpi-value-v2">${fmtBRL(openTotal)}</div>
+          <div class="kpi-sub">faturas ainda não pagas (inclui parcelas futuras)</div>
+        </div>
+        <div class="kpi-card-v2 income">
+          <div class="kpi-label-v2">Faturas fechadas a pagar</div>
+          <div class="kpi-value-v2">${fmtBRL(unpaidClosed)}</div>
+          <div class="kpi-sub">já fechou, ainda sem pagamento</div>
+        </div>`;
+    } else {
+      const barClass = pct >= 100 ? 'over' : (pct >= 75 ? 'warn' : '');
+      statsEl.innerHTML = `
+        <div class="kpi-card-v2 limit">
+          <div class="kpi-label-v2">Limite total</div>
+          <div class="kpi-value-v2">${fmtBRL(limit)}</div>
+        </div>
+        <div class="kpi-card-v2 expense">
+          <div class="kpi-label-v2">Usado</div>
+          <div class="kpi-value-v2">${fmtBRL(used)}</div>
+          <div class="kpi-sub"><div class="ccw-bar" style="background:var(--slate-100);margin-top:6px"><div class="ccw-bar-fill ${barClass}" style="width:${pct}%"></div></div></div>
+        </div>
+        <div class="kpi-card-v2 income">
+          <div class="kpi-label-v2">Disponível</div>
+          <div class="kpi-value-v2">${fmtBRL(avail)}</div>
+        </div>`;
+    }
+
+    /* Filtro de fatura (default: a fatura passada via deep-link — LAN-02 — senão "todos") */
+    const filterSel = document.getElementById('card-detail-period-filter');
+    const prevValue = filterSel.value;
+    filterSel.innerHTML = '<option value="">Todos os lançamentos</option>' +
+      cardInvoices.map(i => `<option value="${i.period}">${escHtml(periodLabel(i.period))}</option>`).join('');
+    if (cardDetailPeriod && cardInvoices.some(i => i.period === cardDetailPeriod)) {
+      filterSel.value = cardDetailPeriod;
+      cardDetailPeriod = null; // só pré-seleciona uma vez, na chegada via deep-link
+    } else if (prevValue) {
+      filterSel.value = prevValue;
+    }
+
+    renderCardDetailTransactions(card);
+  }
+
+  document.getElementById('card-detail-period-filter').addEventListener('change', () => {
+    const card = allCreditCards.find(c => c.id === cardDetailId);
+    if (card) renderCardDetailTransactions(card);
+  });
+
+  function renderCardDetailTransactions(card) {
+    const periodFilter = document.getElementById('card-detail-period-filter').value;
+    let txs = allTx.filter(t => t.credit_card_id === card.id);
+    if (periodFilter) {
+      const invoiceIdsForPeriod = allInvoices.filter(i => i.credit_card_id === card.id && i.period === periodFilter).map(i => i.id);
+      txs = txs.filter(t => invoiceIdsForPeriod.includes(t.invoice_id));
+    }
+    txs = txs.slice().sort((a, b) => b.date.localeCompare(a.date));
+
+    document.getElementById('card-detail-count').innerHTML =
+      `<strong>${txs.length}</strong> lançamento${txs.length !== 1 ? 's' : ''}${periodFilter ? ` — ${escHtml(periodLabel(periodFilter))}` : ''}`;
+
+    const tbody = document.getElementById('card-detail-tbody');
+    const empty = document.getElementById('card-detail-empty');
+    if (txs.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = txs.map(t => {
+      const inv = allInvoices.find(i => i.id === t.invoice_id);
+      return `
+        <tr class="${t.is_ignored ? 'tx-ignored' : ''}">
+          <td class="td-date">${fmtDate(t.date)}</td>
+          <td>
+            <div class="td-desc">${escHtml(t.description || '—')}</div>
+            ${t.establishment ? `<div class="td-desc-sub">${escHtml(t.establishment)}</div>` : ''}
+          </td>
+          <td style="font-size:.8125rem;color:var(--text-muted)">
+            ${inv ? escHtml(periodLabel(inv.period)) : '—'}${t.total_installments > 1 ? ` · ${t.installment_num}/${t.total_installments}` : ''}
+          </td>
+          <td><span class="td-amount expense">− ${fmtBRL(t.amount)}</span></td>
+        </tr>`;
+    }).join('');
+  }
+
+  /* ── HELPERS COMPARTILHADOS DE FORMULÁRIO (bem / financiamento) ── */
+  function populateOwnerMemberSelect(selectId) {
+    document.getElementById(selectId).innerHTML =
+      allMembers.map(m => `<option value="${m.id}">${escHtml(m.name)}</option>`).join('');
+  }
+  function toggleOwnerMemberVisibility(ownerTypeSelectId, groupId) {
+    const isIndividual = document.getElementById(ownerTypeSelectId).value === 'individual';
+    document.getElementById(groupId).style.display = isIndividual ? '' : 'none';
+  }
+  document.getElementById('asset-owner-type').addEventListener('change',
+    () => toggleOwnerMemberVisibility('asset-owner-type', 'asset-owner-member-group'));
+  document.getElementById('loan-owner-type').addEventListener('change',
+    () => toggleOwnerMemberVisibility('loan-owner-type', 'loan-owner-member-group'));
+
+  /* ── CONFIRMAÇÃO GENÉRICA DE EXCLUSÃO ── */
+  function confirmAction(text, action) {
+    document.getElementById('modal-confirm-text').textContent = text;
+    pendingConfirmAction = action;
+    document.getElementById('modal-confirm').classList.add('open');
+  }
+  function closeConfirmModal() { document.getElementById('modal-confirm').classList.remove('open'); }
+  document.getElementById('modal-confirm-close').addEventListener('click', closeConfirmModal);
+  document.getElementById('modal-confirm-cancel').addEventListener('click', closeConfirmModal);
+  document.getElementById('modal-confirm').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeConfirmModal(); });
+  document.getElementById('modal-confirm-ok').addEventListener('click', async () => {
+    const btn = document.getElementById('modal-confirm-ok');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+    try {
+      if (pendingConfirmAction) await pendingConfirmAction();
+    } finally {
+      btn.classList.remove('btn-loading'); btn.disabled = false;
+      closeConfirmModal();
+    }
+  });
+
+  /* ══════════════════════════════════════════════
+     BENS MATERIAIS (PAT-03 / D2) — cadastro + ticket
+     ══════════════════════════════════════════════ */
+  function openAssetModal(id = null) {
+    editingAssetId = id;
+    const asset = id ? allAssets.find(a => a.id === id) : null;
+
+    document.getElementById('modal-asset-title').textContent = asset ? 'Editar bem' : 'Novo bem';
+    document.getElementById('asset-name').value = asset?.name || '';
+    document.getElementById('asset-category').value = asset?.category || '';
+    document.getElementById('asset-value').value = asset?.valor_mercado ?? '';
+
+    populateOwnerMemberSelect('asset-owner-member');
+    document.getElementById('asset-owner-type').value = asset?.owner_type || 'joint';
+    document.getElementById('asset-owner-member').value = asset?.member_id || '';
+    toggleOwnerMemberVisibility('asset-owner-type', 'asset-owner-member-group');
+
+    // Financiamentos disponíveis: sem bem vinculado ainda, ou o já vinculado a este bem (edição)
+    const loanSel = document.getElementById('asset-loan');
+    const availableLoans = allLoans.filter(l => !allAssets.some(a => a.loan_id === l.id && a.id !== id));
+    loanSel.innerHTML = '<option value="">Nenhum</option>' +
+      availableLoans.map(l => `<option value="${l.id}">${escHtml(l.name)}</option>`).join('');
+    loanSel.value = asset?.loan_id || '';
+
+    document.getElementById('modal-asset').classList.add('open');
+    setTimeout(() => document.getElementById('asset-name').focus(), 100);
+  }
+  function closeAssetModal() {
+    document.getElementById('modal-asset').classList.remove('open');
+    editingAssetId = null;
+  }
+
+  async function saveAsset() {
+    const name = document.getElementById('asset-name').value.trim();
+    const category = document.getElementById('asset-category').value.trim();
+    const value = parseFloat(document.getElementById('asset-value').value) || 0;
+    const loanId = document.getElementById('asset-loan').value || null;
+    const ownerType = document.getElementById('asset-owner-type').value;
+    const memberId = ownerType === 'individual' ? (document.getElementById('asset-owner-member').value || null) : null;
+
+    if (!name) { toast('Informe o nome do bem.', 'error'); return; }
+    if (ownerType === 'individual' && !memberId) { toast('Selecione de quem é o bem.', 'error'); return; }
+
+    const btn = document.getElementById('modal-asset-save');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+
+    const payload = {
+      household_id: householdId, name, category: category || null,
+      valor_mercado: value, loan_id: loanId, owner_type: ownerType, member_id: memberId,
+    };
+
+    let error;
+    if (editingAssetId) {
+      ({ error } = await _supabase.from('assets')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', editingAssetId).eq('household_id', householdId));
+      if (!error) {
+        const idx = allAssets.findIndex(a => a.id === editingAssetId);
+        if (idx >= 0) allAssets[idx] = { ...allAssets[idx], ...payload };
+      }
+    } else {
+      const { data, error: e } = await _supabase.from('assets').insert(payload).select().single();
+      error = e;
+      if (!error && data) allAssets.push(data);
+    }
+
+    btn.classList.remove('btn-loading'); btn.disabled = false;
+    if (error) { toast('Erro: ' + error.message, 'error'); return; }
+
+    toast(editingAssetId ? 'Bem atualizado!' : 'Bem cadastrado!', 'success');
+    closeAssetModal();
+    renderSummary();
+    renderExpansion();
+  }
+
+  document.getElementById('modal-asset-close').addEventListener('click', closeAssetModal);
+  document.getElementById('modal-asset-cancel').addEventListener('click', closeAssetModal);
+  document.getElementById('modal-asset-save').addEventListener('click', saveAsset);
+  document.getElementById('modal-asset').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeAssetModal(); });
+
+  /* ── Ticket do bem ── */
+  function openAssetTicket(id) {
+    viewingAssetId = id;
+    const asset = allAssets.find(a => a.id === id);
+    if (!asset) return;
+    const loan = allLoans.find(l => l.id === asset.loan_id);
+    const outstanding = loanOutstanding(loan);
+    const net = FinanceModel.assetNetWorth(asset.valor_mercado, outstanding);
+    const owner = allMembers.find(m => m.id === asset.member_id);
+    const ownerLabel = asset.owner_type === 'joint' ? 'Conjunta' : (owner?.name || 'Individual');
+
+    document.getElementById('ticket-asset-name').textContent = asset.name;
+    document.getElementById('ticket-asset-body').innerHTML = `
+      ${asset.category ? `<div class="ticket-row"><span>Categoria</span><strong>${escHtml(asset.category)}</strong></div>` : ''}
+      <div class="ticket-row"><span>Titularidade</span><strong>${escHtml(ownerLabel)}</strong></div>
+      <div class="ticket-divider"></div>
+      <div class="ticket-row"><span>Valor de mercado</span><strong>${fmtBRL(asset.valor_mercado)}</strong></div>
+      ${loan ? `<div class="ticket-row"><span>Saldo devedor — ${escHtml(loan.name)}</span><strong style="color:var(--color-expense)">− ${fmtBRL(outstanding)}</strong></div>` : ''}
+      <div class="ticket-divider"></div>
+      <div class="ticket-row"><span>Valor líquido</span><strong style="font-size:1.125rem">${fmtBRL(net)}</strong></div>
+    `;
+    document.getElementById('modal-asset-ticket').classList.add('open');
+  }
+  function closeAssetTicket() { document.getElementById('modal-asset-ticket').classList.remove('open'); }
+
+  document.getElementById('modal-asset-ticket-close').addEventListener('click', closeAssetTicket);
+  document.getElementById('modal-asset-ticket').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeAssetTicket(); });
+  document.getElementById('ticket-asset-edit').addEventListener('click', () => {
+    const id = viewingAssetId;
+    closeAssetTicket();
+    openAssetModal(id);
+  });
+  document.getElementById('ticket-asset-delete').addEventListener('click', () => {
+    const asset = allAssets.find(a => a.id === viewingAssetId);
+    if (!asset) return;
+    confirmAction(`Excluir o bem "${asset.name}"? Esta ação não pode ser desfeita.`, async () => {
+      const { error } = await _supabase.from('assets').delete().eq('id', asset.id).eq('household_id', householdId);
+      if (error) { toast('Erro ao excluir: ' + error.message, 'error'); return; }
+      allAssets = allAssets.filter(a => a.id !== asset.id);
+      toast('Bem excluído.', 'info');
+      closeAssetTicket();
+      renderSummary();
+      renderExpansion();
+    });
+  });
+
+  /* ══════════════════════════════════════════════
+     FINANCIAMENTOS (PAT-04 / D2) — cadastro (Price) + ticket
+     ══════════════════════════════════════════════ */
+  function openLoanModal() {
+    document.getElementById('loan-name').value = '';
+    const accSel = document.getElementById('loan-account');
+    const checkingAccounts = allAccounts.filter(a => a.account_type === 'checking');
+    accSel.innerHTML = checkingAccounts.length === 0
+      ? '<option value="">Nenhuma conta corrente cadastrada</option>'
+      : checkingAccounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+    document.getElementById('loan-value').value = '';
+    document.getElementById('loan-rate').value = '';
+    document.getElementById('loan-term').value = '';
+    document.getElementById('loan-start-date').value = todayISO();
+
+    populateOwnerMemberSelect('loan-owner-member');
+    document.getElementById('loan-owner-type').value = 'joint';
+    toggleOwnerMemberVisibility('loan-owner-type', 'loan-owner-member-group');
+
+    document.getElementById('loan-preview').style.display = 'none';
+    document.getElementById('modal-loan').classList.add('open');
+    setTimeout(() => document.getElementById('loan-name').focus(), 100);
+  }
+  function closeLoanModal() { document.getElementById('modal-loan').classList.remove('open'); }
+
+  function updateLoanPreview() {
+    const value = parseFloat(document.getElementById('loan-value').value) || 0;
+    const ratePct = parseFloat(document.getElementById('loan-rate').value) || 0;
+    const term = parseInt(document.getElementById('loan-term').value, 10) || 0;
+    const preview = document.getElementById('loan-preview');
+    if (value > 0 && term > 0) {
+      const pmt = FinanceModel.pricePayment(value, ratePct / 100, term);
+      preview.style.display = '';
+      preview.innerHTML = `<span class="form-hint">Parcela mensal estimada (Price): <strong style="color:var(--text-primary)">${fmtBRL(pmt)}</strong></span>`;
+    } else {
+      preview.style.display = 'none';
+    }
+  }
+  ['loan-value', 'loan-rate', 'loan-term'].forEach(id =>
+    document.getElementById(id).addEventListener('input', updateLoanPreview));
+
+  async function saveLoan() {
+    const name = document.getElementById('loan-name').value.trim();
+    const accountId = document.getElementById('loan-account').value;
+    const value = parseFloat(document.getElementById('loan-value').value) || 0;
+    const ratePct = parseFloat(document.getElementById('loan-rate').value) || 0;
+    const term = parseInt(document.getElementById('loan-term').value, 10) || 0;
+    const startDate = document.getElementById('loan-start-date').value;
+    const ownerType = document.getElementById('loan-owner-type').value;
+    const memberId = ownerType === 'individual' ? (document.getElementById('loan-owner-member').value || null) : null;
+
+    if (!name)       { toast('Informe o nome do financiamento.', 'error'); return; }
+    if (!accountId)  { toast('Selecione a conta que paga a parcela.', 'error'); return; }
+    if (!(value > 0)) { toast('Informe o valor financiado.', 'error'); return; }
+    if (!(term > 0))  { toast('Informe o prazo em parcelas.', 'error'); return; }
+    if (!startDate)  { toast('Informe a data da 1ª parcela.', 'error'); return; }
+    if (ownerType === 'individual' && !memberId) { toast('Selecione de quem é o financiamento.', 'error'); return; }
+
+    const rate = ratePct / 100;
+    const parcela = FinanceModel.pricePayment(value, rate, term);
+
+    const btn = document.getElementById('modal-loan-save');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+
+    const { data, error } = await _supabase.from('loans').insert({
+      household_id: householdId, account_id: accountId, name,
+      valor_total: value, taxa: rate, prazo: term,
+      parcela_mensal: parcela, saldo_devedor: value,
+      data_inicio: startDate, owner_type: ownerType, member_id: memberId,
+    }).select().single();
+
+    btn.classList.remove('btn-loading'); btn.disabled = false;
+    if (error) { toast('Erro ao criar financiamento: ' + error.message, 'error'); return; }
+
+    allLoans.push(data);
+    toast('Financiamento criado! Gerando parcelas…', 'success');
+    closeLoanModal();
+    await ensureLoanInstallments();
+    renderSummary();
+    renderExpansion();
+  }
+
+  document.getElementById('modal-loan-close').addEventListener('click', closeLoanModal);
+  document.getElementById('modal-loan-cancel').addEventListener('click', closeLoanModal);
+  document.getElementById('modal-loan-save').addEventListener('click', saveLoan);
+  document.getElementById('modal-loan').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeLoanModal(); });
+
+  /* ── Ticket do financiamento (drill-down — PAT-04) ── */
+  function openLoanTicket(id) {
+    viewingLoanId = id;
+    const loan = allLoans.find(l => l.id === id);
+    if (!loan) return;
+    const generated = loanInstallmentsGenerated(loan);
+    const outstanding = loanOutstanding(loan);
+    const acc = allAccounts.find(a => a.id === loan.account_id);
+    const owner = allMembers.find(m => m.id === loan.member_id);
+    const ownerLabel = loan.owner_type === 'joint' ? 'Conjunta' : (owner?.name || 'Individual');
+    const quitado = outstanding <= 0.004;
+    const pct = Math.min(100, (generated / loan.prazo) * 100);
+
+    document.getElementById('ticket-loan-name').textContent = loan.name;
+    document.getElementById('ticket-loan-body').innerHTML = `
+      <div class="ticket-row"><span>Titularidade</span><strong>${escHtml(ownerLabel)}</strong></div>
+      <div class="ticket-row"><span>Conta</span><strong>${escHtml(acc?.name || '—')}</strong></div>
+      <div class="ticket-divider"></div>
+      <div class="ticket-row"><span>Valor financiado</span><strong>${fmtBRL(loan.valor_total)}</strong></div>
+      <div class="ticket-row"><span>Taxa mensal</span><strong>${(Number(loan.taxa) * 100).toFixed(2).replace('.', ',')}%</strong></div>
+      <div class="ticket-row"><span>Prazo</span><strong>${loan.prazo}x</strong></div>
+      <div class="ticket-row"><span>Parcela mensal</span><strong>${fmtBRL(loan.parcela_mensal)}</strong></div>
+      <div class="ticket-divider"></div>
+      <div class="ticket-row"><span>Parcelas pagas</span><strong>${generated}/${loan.prazo}</strong></div>
+      <div class="mini-progress" style="max-width:none"><div class="mini-progress-fill" style="width:${pct}%"></div></div>
+      <div class="ticket-row" style="margin-top:8px">
+        <span>Saldo devedor</span>
+        <strong style="font-size:1.125rem;${quitado ? 'color:var(--color-income)' : ''}">${quitado ? 'Quitado' : fmtBRL(outstanding)}</strong>
+      </div>
+    `;
+    document.getElementById('modal-loan-ticket').classList.add('open');
+  }
+  function closeLoanTicket() { document.getElementById('modal-loan-ticket').classList.remove('open'); }
+
+  document.getElementById('modal-loan-ticket-close').addEventListener('click', closeLoanTicket);
+  document.getElementById('modal-loan-ticket').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeLoanTicket(); });
+  document.getElementById('ticket-loan-delete').addEventListener('click', () => {
+    const loan = allLoans.find(l => l.id === viewingLoanId);
+    if (!loan) return;
+    if (loanInstallmentsGenerated(loan) > 0) {
+      toast('Não é possível excluir: este financiamento já gerou parcelas de lançamento.', 'error');
+      return;
+    }
+    confirmAction(`Excluir o financiamento "${loan.name}"?`, async () => {
+      const { error } = await _supabase.from('loans').delete().eq('id', loan.id).eq('household_id', householdId);
+      if (error) { toast('Erro ao excluir: ' + error.message, 'error'); return; }
+      allLoans = allLoans.filter(l => l.id !== loan.id);
+      toast('Financiamento excluído.', 'info');
+      closeLoanTicket();
+      renderSummary();
+      renderExpansion();
+    });
+  });
 
   /* ── SIDEBAR MOBILE / LOGOUT ── */
   document.getElementById('mobile-menu-btn').addEventListener('click', () => {

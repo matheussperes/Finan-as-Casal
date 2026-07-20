@@ -7,53 +7,13 @@
   <link rel="stylesheet" href="globals.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="js/finance-model.js"></script>
 
   <!--
-  ═══════════════════════════════════════════════════════════
-  SQL NECESSÁRIO — rode no Supabase antes de usar esta tela
-  ═══════════════════════════════════════════════════════════
-
-  -- 1. Adicionar colunas que podem faltar em independence_params
-  ALTER TABLE public.independence_params
-    ADD COLUMN IF NOT EXISTS real_rate_accumulation numeric DEFAULT 0.04,
-    ADD COLUMN IF NOT EXISTS real_rate_post          numeric DEFAULT 0.035,
-    ADD COLUMN IF NOT EXISTS desired_monthly_income  numeric DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS other_monthly_income    numeric DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS target_retirement_age   integer DEFAULT 65,
-    ADD COLUMN IF NOT EXISTS monthly_contribution    numeric DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS current_patrimony       numeric DEFAULT 0;
-
-  -- 2. Criar tabela de eventos patrimoniais
-  CREATE TABLE IF NOT EXISTS public.independence_events (
-    id           uuid        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-    household_id uuid        NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
-    description  text        NOT NULL,
-    event_type   text        NOT NULL CHECK (event_type IN ('withdrawal','extra_deposit','expense','income')),
-    amount       numeric     NOT NULL,
-    start_date   date        NOT NULL,
-    end_date     date,
-    created_at   timestamptz DEFAULT now(),
-    updated_at   timestamptz DEFAULT now()
-  );
-
-  -- 3. RLS na nova tabela
-  ALTER TABLE public.independence_events ENABLE ROW LEVEL SECURITY;
-
-  CREATE POLICY ie_select ON public.independence_events FOR SELECT TO authenticated
-    USING (household_id IN (SELECT public.user_household_ids()));
-  CREATE POLICY ie_insert ON public.independence_events FOR INSERT TO authenticated
-    WITH CHECK (household_id IN (SELECT public.user_household_ids()));
-  CREATE POLICY ie_update ON public.independence_events FOR UPDATE TO authenticated
-    USING (household_id IN (SELECT public.user_household_ids()));
-  CREATE POLICY ie_delete ON public.independence_events FOR DELETE TO authenticated
-    USING (household_id IN (SELECT public.user_household_ids()));
-
-  -- 4. Trigger updated_at
-  CREATE TRIGGER independence_events_updated_at
-    BEFORE UPDATE ON public.independence_events
-    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
-
-  ═══════════════════════════════════════════════════════════
+  Sprint 5 (PRJ-01): os "Eventos Patrimoniais Futuros" foram fundidos em
+  Projetos — a tabela independence_events não existe mais (ver
+  supabase/migrations/20260718170000_sprint5_projetos.sql). A simulação
+  desta tela agora lê os projetos (tipo D3) diretamente.
   -->
 
   <style>
@@ -240,6 +200,14 @@
     .cap-dot { width:8px; height:8px; border-radius:2px; }
 
     /* ─── Eventos ─── */
+    /* Linhas do agregado de projetos (PRJ-03 — só agregado na IF) */
+    .agg-row {
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      font-size:.8125rem; color:var(--text-secondary);
+      padding:7px 10px; background:var(--slate-50); border-radius:var(--radius-sm);
+    }
+    .agg-row strong { font-family:var(--font-display); font-weight:700; }
+
     .events-section {
       background:var(--surface); border:1px solid var(--border);
       border-radius:var(--radius-lg); overflow:hidden;
@@ -691,43 +659,15 @@
             </div>
           </div>
 
-          <!-- Projetos integrados -->
+          <!-- PRJ-01/PRJ-03 — Projetos no plano (só o agregado; detalhe por
+               projeto fica na aba Projetos) -->
           <div class="projects-summary">
             <div class="projects-summary-header">
-              <div class="projects-summary-title">📋 Projetos integrados</div>
-              <a href="projetos.html" style="font-size:.8125rem;color:var(--primary);font-weight:600">Ver projetos →</a>
+              <div class="projects-summary-title">📋 Projetos no plano</div>
+              <a href="projetos.html" style="font-size:.8125rem;color:var(--primary);font-weight:600">Detalhe por projeto →</a>
             </div>
             <div id="projects-summary-content">
               <div style="font-size:.875rem;color:var(--text-muted)">Carregando projetos…</div>
-            </div>
-          </div>
-
-          <!-- Eventos patrimoniais -->
-          <div class="events-section">
-            <div class="events-header">
-              <div class="events-title">⚡ Eventos patrimoniais futuros</div>
-              <button class="btn btn-secondary btn-sm" id="btn-new-event">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
-                     fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                Novo evento
-              </button>
-            </div>
-
-            <div class="alert-box info" style="margin:12px 20px;margin-bottom:0">
-              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
-                   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="16" x2="12" y2="12"/>
-                <line x1="12" y1="8" x2="12.01" y2="8"/>
-              </svg>
-              Eventos afetam a curva do gráfico. Retiradas e despesas reduzem o patrimônio; aportes e rendas extras aumentam.
-            </div>
-
-            <div class="events-list" id="events-list">
-              <!-- renderizado pelo JS -->
             </div>
           </div>
 
@@ -739,110 +679,6 @@
 
 <!-- ═══ TOAST ═══ -->
 <div id="toast-container"></div>
-
-<!-- ═══ MODAL EVENTO ═══ -->
-<div class="modal-overlay" id="modal-event">
-  <div class="modal">
-    <div class="modal-header">
-      <span class="modal-title" id="modal-event-title">Novo evento</span>
-      <button class="modal-close" id="modal-event-close">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
-    </div>
-    <div class="modal-body">
-
-      <!-- Tipo -->
-      <div class="form-group">
-        <label class="form-label">Tipo de evento</label>
-        <div class="event-type-grid" id="event-type-grid">
-          <div class="event-type-opt selected" data-type="withdrawal" onclick="selectEventType('withdrawal')">
-            <span class="et-emoji">💸</span>
-            <div>
-              <div class="et-label">Retirada única</div>
-              <div class="et-sub">Saque do patrimônio</div>
-            </div>
-          </div>
-          <div class="event-type-opt" data-type="extra_deposit" onclick="selectEventType('extra_deposit')">
-            <span class="et-emoji">💰</span>
-            <div>
-              <div class="et-label">Aporte extra único</div>
-              <div class="et-sub">Bônus, herança…</div>
-            </div>
-          </div>
-          <div class="event-type-opt" data-type="expense" onclick="selectEventType('expense')">
-            <span class="et-emoji">📉</span>
-            <div>
-              <div class="et-label">Despesa recorrente</div>
-              <div class="et-sub">Parcela, aluguel…</div>
-            </div>
-          </div>
-          <div class="event-type-opt" data-type="income" onclick="selectEventType('income')">
-            <span class="et-emoji">📈</span>
-            <div>
-              <div class="et-label">Receita recorrente</div>
-              <div class="et-sub">Aluguel recebido…</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Descrição -->
-      <div class="form-group">
-        <label class="form-label">Descrição</label>
-        <input class="input" type="text" id="ev-description" placeholder="Ex: Entrada do apartamento" maxlength="80" />
-      </div>
-
-      <!-- Valor -->
-      <div class="form-group">
-        <label class="form-label">Valor (R$)</label>
-        <input class="input" type="number" id="ev-amount" placeholder="300000" min="0" step="0.01" />
-      </div>
-
-      <!-- Datas -->
-      <div class="form-row-2">
-        <div class="form-group">
-          <label class="form-label">Data de início</label>
-          <input class="input" type="month" id="ev-start-date" />
-        </div>
-        <div class="form-group" id="ev-end-date-group">
-          <label class="form-label">Data de fim</label>
-          <input class="input" type="month" id="ev-end-date" />
-          <span class="form-hint">Só para recorrentes</span>
-        </div>
-      </div>
-
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" id="modal-event-cancel">Cancelar</button>
-      <button class="btn btn-primary" id="modal-event-save">Salvar evento</button>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ MODAL CONFIRMAR EXCLUSÃO ═══ -->
-<div class="modal-overlay" id="modal-confirm">
-  <div class="modal confirm-modal">
-    <div class="modal-header">
-      <span class="modal-title">Excluir evento</span>
-      <button class="modal-close" id="modal-confirm-close">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
-    </div>
-    <div class="confirm-body">
-      <p>Excluir o evento <strong id="confirm-event-name">"—"</strong>? Esta ação não pode ser desfeita.</p>
-    </div>
-    <div class="confirm-footer">
-      <button class="btn btn-secondary" id="modal-confirm-cancel">Cancelar</button>
-      <button class="btn btn-danger" id="modal-confirm-ok">Excluir</button>
-    </div>
-  </div>
-</div>
 
 <!-- ═══ SCRIPT ═══ -->
 <script>
@@ -861,13 +697,9 @@ const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 let householdId   = null;
 let paramsId      = null;   // id da linha em independence_params
 let params        = {};     // parâmetros carregados
-let events        = [];     // independence_events
-let projects      = [];     // projetos ativos com PMT
-let memberBirth   = null;   // data de nascimento de Matheus
+let projects      = [];     // projetos do casal (PRJ-01: eles SÃO os eventos patrimoniais)
+let memberBirth   = null;   // data de nascimento do titular
 let ifChart       = null;   // instância do Chart.js
-let editingEventId = null;  // id do evento em edição
-let deleteEventId  = null;
-let selectedEventType = 'withdrawal';
 
 /* ──────────────────────────────────────────────
    FORMATAÇÃO
@@ -906,137 +738,33 @@ function showToast(msg, type='success') {
 }
 
 /* ──────────────────────────────────────────────
-   MOTOR DE SIMULAÇÃO
-   Simula mês a mês do hoje até maxAge
+   MOTOR DE SIMULAÇÃO (PRJ-01/PRJ-03)
+   O motor puro vive em js/finance-model.js
+   (#simulateIndependence) — aqui só montamos os
+   argumentos. Os eventos vêm dos PROJETOS (que são
+   os eventos patrimoniais futuros): retirada única
+   sai do montante total na data-alvo, aporte extra
+   entra, e recorrentes ajustam o fluxo mensal.
+   O aporte usado é SEMPRE o monthly_contribution
+   total — os PMTs por projeto são recorte dele,
+   nunca soma por cima (anti-dupla-contagem).
 ─────────────────────────────────────────────── */
-function runSimulation(p, evList) {
-  const currentAge    = Number(p.current_age)  || 30;
-  const targetAge     = Number(p.target_retirement_age) || 65;
-  const maxAge        = Math.max(targetAge + 20, 85);
-  const rateAcc       = Number(p.real_rate_accumulation) || 0.04;
-  const ratePost      = Number(p.real_rate_post)         || 0.035;
-  const desiredIncome = Number(p.desired_monthly_income) || 0;
-  const otherIncome   = Number(p.other_monthly_income)   || 0;
-  const monthlyContrib= Number(p.monthly_contribution)   || 0;
-  const initialPatrimony = Number(p.current_patrimony)   || 0;
-
-  // Taxa mensal real
-  const monthlyRate = Math.pow(1 + rateAcc, 1/12) - 1;
-
-  // Patrimônio alvo (renda perpétua)
-  const netDesired   = Math.max(0, desiredIncome - otherIncome);
-  const targetPatrimony = ratePost > 0 ? (netDesired * 12) / ratePost : 0;
-
-  // Total de meses a simular
-  const totalMonths = (maxAge - currentAge) * 12;
-
-  // Data de início da simulação (mês atual)
-  const now   = new Date();
-  const startY = now.getFullYear();
-  const startM = now.getMonth(); // 0-indexed
-
-  // Construir lookup de eventos por mês (chave: YYYY-MM)
-  const eventMap = {};
-  evList.forEach(ev => {
-    const start = ev.start_date ? ev.start_date.substring(0,7) : null;
-    const end   = ev.end_date   ? ev.end_date.substring(0,7)   : null;
-    if (!start) return;
-
-    if (ev.event_type === 'withdrawal' || ev.event_type === 'extra_deposit') {
-      // Evento único — só no mês de início
-      if (!eventMap[start]) eventMap[start] = [];
-      eventMap[start].push(ev);
-    } else {
-      // Recorrente — todos os meses de start até end
-      const [sy, sm] = start.split('-').map(Number);
-      let [ey, em]   = end ? end.split('-').map(Number) : [maxAge + startY, 12];
-      let cy = sy, cm = sm;
-      while (cy < ey || (cy === ey && cm <= em)) {
-        const key = `${cy}-${String(cm).padStart(2,'0')}`;
-        if (!eventMap[key]) eventMap[key] = [];
-        eventMap[key].push(ev);
-        cm++;
-        if (cm > 12) { cm = 1; cy++; }
-        if ((cy - sy) * 12 + (cm - sm) > totalMonths + 12) break; // safety
-      }
-    }
-  });
-
-  // Simular
-  const ageLabels    = [];
-  const wealthCurve  = [];
-  const targetLine   = [];
-  let patrimony      = initialPatrimony;
-  let ifAge          = null;   // primeira vez que patrimônio >= target
-  let ifCrossMonth   = null;
-
-  for (let m = 0; m <= totalMonths; m++) {
-    const cy = startY + Math.floor((startM + m) / 12);
-    const cm = ((startM + m) % 12) + 1;
-    const key = `${cy}-${String(cm).padStart(2,'0')}`;
-    const age  = currentAge + m / 12;
-
-    // Aplicar eventos deste mês
-    let extraContrib = 0;
-    if (eventMap[key]) {
-      eventMap[key].forEach(ev => {
-        const amt = Number(ev.amount) || 0;
-        if (ev.event_type === 'withdrawal')    { patrimony -= amt; }
-        if (ev.event_type === 'extra_deposit') { patrimony += amt; }
-        if (ev.event_type === 'expense')       { extraContrib -= amt; }
-        if (ev.event_type === 'income')        { extraContrib += amt; }
-      });
-    }
-
-    // Aportar e render
-    patrimony += (monthlyContrib + extraContrib);
-    patrimony  = patrimony * (1 + monthlyRate);
-    patrimony  = Math.max(0, patrimony); // não fica negativo
-
-    // Registrar cruzamento
-    if (ifAge === null && targetPatrimony > 0 && patrimony >= targetPatrimony) {
-      ifAge         = age;
-      ifCrossMonth  = m;
-    }
-
-    // Gravar ponto anual (a cada 12 meses)
-    if (m % 12 === 0) {
-      ageLabels.push(Math.floor(age));
-      wealthCurve.push(patrimony);
-      targetLine.push(targetPatrimony);
-    }
-  }
-
-  // PMT necessário para atingir target na idade alvo (sem eventos para simplificar)
-  const nMonths = (targetAge - currentAge) * 12;
-  let pmtNeeded = null;
-  if (nMonths > 0 && targetPatrimony > 0) {
-    const pv = initialPatrimony;
-    const fv = targetPatrimony;
-    if (monthlyRate === 0) {
-      pmtNeeded = (fv - pv) / nMonths;
-    } else {
-      const factor = Math.pow(1 + monthlyRate, nMonths);
-      pmtNeeded = (fv - pv * factor) * monthlyRate / (factor - 1);
-    }
-  }
-
-  return {
-    targetPatrimony,
-    pmtNeeded,
-    ifAge,
-    currentAge,
-    targetAge,
-    ageLabels,
-    wealthCurve,
-    targetLine,
-    rateAcc,
-    ratePost,
-    desiredIncome,
-    otherIncome,
-    netDesired,
-    monthlyContrib,
-  };
+function runSimulation(p, projectList) {
+  const now = new Date();
+  return FinanceModel.simulateIndependence(
+    {
+      currentAge:       Number(p.current_age) || 30,
+      targetAge:        Number(p.target_retirement_age) || 65,
+      rateAcc:          Number(p.real_rate_accumulation) || 0.04,
+      ratePost:         Number(p.real_rate_post) || 0.035,
+      desiredIncome:    Number(p.desired_monthly_income) || 0,
+      otherIncome:      Number(p.other_monthly_income) || 0,
+      monthlyContrib:   Number(p.monthly_contribution) || 0,
+      initialPatrimony: Number(p.current_patrimony) || 0,
+    },
+    FinanceModel.projectsToSimulationEvents(projectList),
+    { startYear: now.getFullYear(), startMonth: now.getMonth() }
+  );
 }
 
 /* ──────────────────────────────────────────────
@@ -1182,7 +910,10 @@ function renderChart(sim) {
 }
 
 /* ──────────────────────────────────────────────
-   PROJETOS INTEGRADOS
+   PROJETOS NO PLANO (PRJ-03)
+   SÓ O AGREGADO — o detalhe por projeto fica na
+   aba Projetos. O aporte em projetos é um recorte
+   do aporte total (mesmo pool), nunca uma soma.
 ─────────────────────────────────────────────── */
 function renderProjectsSummary() {
   const container = document.getElementById('projects-summary-content');
@@ -1196,20 +927,34 @@ function renderProjectsSummary() {
     return;
   }
 
-  // Calcular PMT de cada projeto
-  let totalProjectPMT = 0;
   const now = new Date();
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const poolMonthlyRate = FinanceModel.annualToMonthlyRate(Number(params.real_rate_accumulation) || 0.04);
+
+  /* Agregados por tipo (D3). PMT só existe para retiradas únicas — os
+     outros tipos não acumulam mensalmente. Taxa: SEMPRE a do pool. */
+  let totalProjectPMT = 0;
+  let retiradasFuturas = 0, nRetiradas = 0;
+  let aportesExtras = 0, nAportes = 0;
+  let despesasMes = 0, nDespesas = 0;
+  let receitasMes = 0, nReceitas = 0;
 
   activeProjects.forEach(p => {
-    if (!p.target_date) return;
-    const [ty, tm] = p.target_date.split('-').map(Number);
-    const n = (ty - now.getFullYear()) * 12 + (tm - 1 - now.getMonth());
-    if (n <= 0) return;
-    const fv = Math.max(0, (p.target_amount||0) - (p.allocated_amount||0));
-    if (fv <= 0) return;
-    const r = (Number(p.monthly_rate)||0) / 100;
-    const pmt = r === 0 ? fv/n : fv * r / (Math.pow(1+r,n) - 1);
-    totalProjectPMT += pmt;
+    const tipo = p.tipo || 'retirada_unica';
+    const amount = Number(p.target_amount) || 0;
+    if (tipo === 'retirada_unica') {
+      nRetiradas++; retiradasFuturas += amount;
+      if (p.target_date) {
+        const n = FinanceModel.monthsBetween(todayIso, p.target_date);
+        const pmt = FinanceModel.projectMonthlyContribution({
+          valorAlvo: amount, jaReservado: p.allocated_amount,
+          monthsRemaining: n, taxaMensal: poolMonthlyRate,
+        });
+        if (pmt) totalProjectPMT += pmt;
+      }
+    } else if (tipo === 'aporte_extra') { nAportes++; aportesExtras += amount; }
+    else if (tipo === 'despesa_recorrente') { nDespesas++; despesasMes += amount; }
+    else if (tipo === 'receita_recorrente') { nReceitas++; receitasMes += amount; }
   });
 
   const monthlyContrib = Number(params.monthly_contribution) || 0;
@@ -1217,7 +962,22 @@ function renderProjectsSummary() {
   const projectsPct    = monthlyContrib > 0 ? Math.min((totalProjectPMT/monthlyContrib)*100, 100) : 0;
   const ifPct          = 100 - projectsPct;
 
+  /* Linhas do agregado por tipo — só o que existe */
+  const aggRows = [];
+  if (nRetiradas) aggRows.push(`<div class="agg-row"><span>🎯 ${nRetiradas} retirada${nRetiradas > 1 ? 's' : ''} única${nRetiradas > 1 ? 's' : ''}</span><strong style="color:#be123c">− ${fmtBRL(retiradasFuturas)} no total</strong></div>`);
+  if (nAportes) aggRows.push(`<div class="agg-row"><span>💰 ${nAportes} aporte${nAportes > 1 ? 's' : ''} extra${nAportes > 1 ? 's' : ''}</span><strong style="color:var(--color-income)">+ ${fmtBRL(aportesExtras)} no total</strong></div>`);
+  if (nDespesas) aggRows.push(`<div class="agg-row"><span>📉 ${nDespesas} despesa${nDespesas > 1 ? 's' : ''} recorrente${nDespesas > 1 ? 's' : ''}</span><strong style="color:#be123c">− ${fmtBRL(despesasMes)}/mês</strong></div>`);
+  if (nReceitas) aggRows.push(`<div class="agg-row"><span>📈 ${nReceitas} receita${nReceitas > 1 ? 's' : ''} recorrente${nReceitas > 1 ? 's' : ''}</span><strong style="color:var(--color-income)">+ ${fmtBRL(receitasMes)}/mês</strong></div>`);
+
   container.innerHTML = `
+    <p style="font-size:.75rem;color:var(--text-muted);margin-bottom:12px">
+      Os projetos entram automaticamente na curva acima — retiradas saem do montante total na
+      data-alvo, aportes entram, e recorrentes mudam o fluxo. O aporte em projetos é um
+      <strong>recorte</strong> do aporte total (mesmo pool), nunca uma soma à parte.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+      ${aggRows.join('') || '<span style="font-size:.8125rem;color:var(--text-muted)">Nenhum efeito futuro agendado.</span>'}
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
       <div>
         <div style="font-size:.6875rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Projetos ativos</div>
@@ -1257,78 +1017,13 @@ function renderProjectsSummary() {
 }
 
 /* ──────────────────────────────────────────────
-   RENDERIZAR EVENTOS
-─────────────────────────────────────────────── */
-const EVENT_META = {
-  withdrawal:    { emoji:'💸', label:'Retirada única',      bg:'#fff1f2', color:'#be123c' },
-  extra_deposit: { emoji:'💰', label:'Aporte extra único',  bg:'#ecfdf5', color:'#065f46' },
-  expense:       { emoji:'📉', label:'Despesa recorrente',  bg:'#fefce8', color:'#92400e' },
-  income:        { emoji:'📈', label:'Receita recorrente',  bg:'#eff6ff', color:'#1e40af' },
-};
-
-function renderEvents() {
-  const list = document.getElementById('events-list');
-
-  if (events.length === 0) {
-    list.innerHTML = `
-      <div class="events-empty">
-        Nenhum evento cadastrado.<br>
-        <span style="font-size:.8125rem">Adicione retiradas, aportes extras, despesas e receitas futuras para uma simulação mais precisa.</span>
-      </div>`;
-    return;
-  }
-
-  // Ordenar por data de início
-  const sorted = [...events].sort((a,b) => (a.start_date||'') > (b.start_date||'') ? 1 : -1);
-
-  list.innerHTML = sorted.map(ev => {
-    const meta = EVENT_META[ev.event_type] || EVENT_META['withdrawal'];
-    const isNeg = ev.event_type === 'withdrawal' || ev.event_type === 'expense';
-    const amtCls = isNeg ? 'negative' : 'positive';
-    const prefix  = isNeg ? '−' : '+';
-
-    const startLabel = fmtMonthLabel((ev.start_date||'').substring(0,7));
-    const endLabel   = ev.end_date ? ` até ${fmtMonthLabel(ev.end_date.substring(0,7))}` : '';
-    const meta2      = ev.event_type === 'withdrawal' || ev.event_type === 'extra_deposit'
-      ? `Único em ${startLabel}`
-      : `${startLabel}${endLabel}`;
-
-    return `
-      <div class="event-row">
-        <div class="event-type-icon" style="background:${meta.bg};color:${meta.color}">${meta.emoji}</div>
-        <div class="event-info">
-          <div class="event-desc">${escHtml(ev.description)}</div>
-          <div class="event-meta">${meta.label} · ${meta2}</div>
-        </div>
-        <div class="event-amount ${amtCls}">${prefix} ${fmtBRL(ev.amount)}</div>
-        <div class="event-actions">
-          <button class="event-action-btn" title="Editar" onclick="openEventModal('${ev.id}')">
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
-                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-          </button>
-          <button class="event-action-btn danger" title="Excluir" onclick="confirmDeleteEvent('${ev.id}')">
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
-                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6l-1 14H6L5 6"/>
-              <path d="M10 11v6"/><path d="M14 11v6"/>
-              <path d="M9 6V4h6v2"/>
-            </svg>
-          </button>
-        </div>
-      </div>`;
-  }).join('');
-}
-
-/* ──────────────────────────────────────────────
    RECALCULAR E RENDERIZAR TUDO
+   (PRJ-01: a simulação lê os projetos — os eventos
+   patrimoniais futuros não existem mais à parte)
 ─────────────────────────────────────────────── */
 function recalculate() {
   if (!params) return;
-  const sim = runSimulation(params, events);
+  const sim = runSimulation(params, projects);
   renderResults(sim);
   renderChart(sim);
   renderProjectsSummary();
@@ -1338,9 +1033,8 @@ function recalculate() {
    CARREGAR DADOS
 ─────────────────────────────────────────────── */
 async function loadAll() {
-  const [paramsRes, eventsRes, projectsRes] = await Promise.all([
+  const [paramsRes, projectsRes] = await Promise.all([
     _supabase.from('independence_params').select('*').eq('household_id', householdId).maybeSingle(),
-    _supabase.from('independence_events').select('*').eq('household_id', householdId).order('start_date', { ascending: true }),
     _supabase.from('projects').select('*').eq('household_id', householdId),
   ]);
 
@@ -1376,12 +1070,10 @@ async function loadAll() {
     params.current_age = params.current_age || 30;
   }
 
-  events   = eventsRes.data  || [];
   projects = projectsRes.data || [];
 
   // Preencher painel de parâmetros
   fillParamPanel();
-  renderEvents();
   recalculate();
 }
 
@@ -1445,139 +1137,6 @@ async function saveParams() {
 }
 
 /* ──────────────────────────────────────────────
-   MODAL EVENTO
-─────────────────────────────────────────────── */
-function selectEventType(type) {
-  selectedEventType = type;
-  document.querySelectorAll('.event-type-opt').forEach(el => {
-    el.classList.toggle('selected', el.dataset.type === type);
-  });
-  // Mostrar/esconder end date
-  const isRecurrent = type === 'expense' || type === 'income';
-  document.getElementById('ev-end-date-group').style.opacity = isRecurrent ? '1' : '.4';
-  document.getElementById('ev-end-date').disabled = !isRecurrent;
-}
-
-function openEventModal(eventId = null) {
-  editingEventId = eventId;
-  const modal = document.getElementById('modal-event');
-
-  if (eventId) {
-    const ev = events.find(e => e.id === eventId);
-    if (!ev) return;
-    document.getElementById('modal-event-title').textContent = 'Editar evento';
-    selectEventType(ev.event_type || 'withdrawal');
-    document.getElementById('ev-description').value = ev.description || '';
-    document.getElementById('ev-amount').value       = ev.amount || '';
-    document.getElementById('ev-start-date').value   = (ev.start_date||'').substring(0,7);
-    document.getElementById('ev-end-date').value     = (ev.end_date||'').substring(0,7);
-  } else {
-    document.getElementById('modal-event-title').textContent = 'Novo evento';
-    selectEventType('withdrawal');
-    document.getElementById('ev-description').value = '';
-    document.getElementById('ev-amount').value       = '';
-    document.getElementById('ev-start-date').value   = '';
-    document.getElementById('ev-end-date').value     = '';
-  }
-
-  modal.classList.add('open');
-  setTimeout(() => document.getElementById('ev-description').focus(), 100);
-}
-
-function closeEventModal() {
-  document.getElementById('modal-event').classList.remove('open');
-  editingEventId = null;
-}
-
-async function saveEvent() {
-  const description = document.getElementById('ev-description').value.trim();
-  const amount      = parseFloat(document.getElementById('ev-amount').value) || 0;
-  const startDate   = document.getElementById('ev-start-date').value;
-  const endDate     = document.getElementById('ev-end-date').value;
-
-  if (!description) { showToast('Informe a descrição do evento', 'error'); return; }
-  if (!amount)      { showToast('Informe o valor do evento', 'error'); return; }
-  if (!startDate)   { showToast('Informe a data de início', 'error'); return; }
-
-  const btn = document.getElementById('modal-event-save');
-  btn.classList.add('btn-loading');
-  btn.disabled = true;
-
-  const isRecurrent = selectedEventType === 'expense' || selectedEventType === 'income';
-  const payload = {
-    household_id: householdId,
-    description,
-    event_type:   selectedEventType,
-    amount,
-    start_date:   startDate + '-01',
-    end_date:     isRecurrent && endDate ? endDate + '-01' : null,
-  };
-
-  let error;
-  if (editingEventId) {
-    const res = await _supabase.from('independence_events')
-      .update({ ...payload, updated_at: new Date().toISOString() })
-      .eq('id', editingEventId).eq('household_id', householdId);
-    error = res.error;
-  } else {
-    const res = await _supabase.from('independence_events').insert(payload);
-    error = res.error;
-  }
-
-  btn.classList.remove('btn-loading');
-  btn.disabled = false;
-
-  if (error) { showToast('Erro ao salvar: ' + error.message, 'error'); return; }
-
-  showToast(editingEventId ? 'Evento atualizado!' : 'Evento criado!', 'success');
-  closeEventModal();
-
-  // Recarregar eventos e recalcular
-  const { data } = await _supabase.from('independence_events')
-    .select('*').eq('household_id', householdId).order('start_date', { ascending:true });
-  events = data || [];
-  renderEvents();
-  recalculate();
-}
-
-/* ──────────────────────────────────────────────
-   EXCLUIR EVENTO
-─────────────────────────────────────────────── */
-function confirmDeleteEvent(id) {
-  const ev = events.find(e => e.id === id);
-  if (!ev) return;
-  deleteEventId = id;
-  document.getElementById('confirm-event-name').textContent = `"${ev.description}"`;
-  document.getElementById('modal-confirm').classList.add('open');
-}
-
-async function deleteEvent() {
-  if (!deleteEventId) return;
-
-  const btn = document.getElementById('modal-confirm-ok');
-  btn.classList.add('btn-loading');
-  btn.disabled = true;
-
-  const { error } = await _supabase.from('independence_events')
-    .delete().eq('id', deleteEventId).eq('household_id', householdId);
-
-  btn.classList.remove('btn-loading');
-  btn.disabled = false;
-  document.getElementById('modal-confirm').classList.remove('open');
-
-  if (error) { showToast('Erro ao excluir: ' + error.message, 'error'); return; }
-
-  showToast('Evento excluído', 'info');
-  deleteEventId = null;
-
-  const { data } = await _supabase.from('independence_events')
-    .select('*').eq('household_id', householdId).order('start_date', { ascending:true });
-  events = data || [];
-  renderEvents();
-  recalculate();
-}
-
-/* ──────────────────────────────────────────────
    INIT
 ─────────────────────────────────────────────── */
 async function init() {
@@ -1628,27 +1187,6 @@ function bindEvents() {
     });
   });
 
-  // Modal evento
-  document.getElementById('btn-new-event').addEventListener('click', () => openEventModal());
-  document.getElementById('modal-event-close') .addEventListener('click', closeEventModal);
-  document.getElementById('modal-event-cancel').addEventListener('click', closeEventModal);
-  document.getElementById('modal-event').addEventListener('click', e => {
-    if (e.target === e.currentTarget) closeEventModal();
-  });
-  document.getElementById('modal-event-save').addEventListener('click', saveEvent);
-
-  // Confirm delete
-  document.getElementById('modal-confirm-close') .addEventListener('click', () => {
-    document.getElementById('modal-confirm').classList.remove('open');
-  });
-  document.getElementById('modal-confirm-cancel').addEventListener('click', () => {
-    document.getElementById('modal-confirm').classList.remove('open');
-  });
-  document.getElementById('modal-confirm').addEventListener('click', e => {
-    if (e.target === e.currentTarget) document.getElementById('modal-confirm').classList.remove('open');
-  });
-  document.getElementById('modal-confirm-ok').addEventListener('click', deleteEvent);
-
   // Logout
   document.getElementById('btn-logout').addEventListener('click', async () => {
     await _supabase.auth.signOut();
@@ -1663,14 +1201,6 @@ function bindEvents() {
   document.getElementById('sidebar-overlay').addEventListener('click', () => {
     document.getElementById('sidebar').classList.remove('open');
     document.getElementById('sidebar-overlay').classList.remove('open');
-  });
-
-  // Escape
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      document.getElementById('modal-event').classList.remove('open');
-      document.getElementById('modal-confirm').classList.remove('open');
-    }
   });
 }
 

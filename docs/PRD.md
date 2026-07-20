@@ -205,3 +205,204 @@ Ordem: (a) wins visíveis rápido, (b) fundação do modelo financeiro antes das
 | 7 | Importação OFX/CSV | LAN-05 | Sprints 1–4 |
 
 O detalhamento executável de cada sprint (prompts prontos para o Claude Code + modelo recomendado) está no documento **Pipeline de Execução — Sprints**.
+
+---
+
+## 8. Sprint 2 — Notas de implementação (o que realmente foi encontrado e decidido)
+
+Ao iniciar o Sprint 2, o schema real divergia bastante do que este documento assume — não havia
+`docs/PRD.md` no repositório, nem tabela de categorias, nem qualquer modelo de investimento dentro
+da conta. Estas são as divergências encontradas e as decisões tomadas com o usuário antes de migrar
+(ver commit do Sprint 2 para o SQL completo):
+
+1. **Categorias não existiam como dado.** "Classificação" era uma lista fixa de 9 strings, hard-coded
+   em `plano.html` (`CLASSIFICATIONS`/`CAT_META`) e duplicada como `<option>` em `lancamentos.html`.
+   `transactions.classification` / `budget_plan.classification` sempre foram texto livre, sem tabela
+   nem id. **Decisão:** nova tabela `categories` (household-scoped), semeada com as 9 classificações
+   atuais + a categoria interna "Aporte reserva de emergência"; `classification` continua texto livre
+   nas transações/orçamento, mas agora validado/alimentado pela tabela. Exclusão de categoria em uso
+   reatribui os lançamentos para "Classificação neutra" automaticamente (nunca bloqueia).
+
+2. **Investimento era só outro `account_type`.** Não existia "posição dentro da conta" — cada
+   investimento era uma conta 100% separada (`account_type = 'investment'`), com seu próprio saldo.
+   **Decisão:** o modelo novo (`investment_positions`, filha de uma conta corrente + RPC
+   `transfer_to_investment` fazendo as duas escritas ligadas numa única transação SQL) foi construído
+   do zero. As contas `investment`/`savings` antigas ficam intocadas como legado — a migração delas
+   fica para quando o CFG-02 (Sprint 1) remover esses tipos de conta.
+
+3. **Reserva de emergência tinha saldo digitado manualmente.** `emergency_reserve.current_balance`
+   era um número que o usuário editava direto no modal, sem relação com nenhuma conta/investimento.
+   **Decisão:** cutover completo — a coluna `current_balance` foi removida; o saldo da reserva agora
+   é sempre o `valor_aplicado` da `investment_position` com `is_reserve = true`, alimentada só por
+   transferências com classificação "Aporte reserva de emergência" (mesma RPC do item 2).
+   `target_months` foi renomeado para `multiplier` (mesmo conceito: multiplicador × despesas
+   essenciais, não mais "meses de gasto total").
+
+**Onde está o quê:**
+- `supabase/migrations/20260717120000_sprint2_modelo_financeiro.sql` — schema completo, RLS e a RPC
+  `transfer_to_investment`. **Precisa ser rodado manualmente no SQL Editor do Supabase** — o ambiente
+  de execução do agente não tem CLI nem service-role configurados para aplicar migrações direto.
+- `js/finance-model.js` — funções puras do modelo (cálculo da transferência e da meta de reserva),
+  compartilhadas entre as páginas e os testes.
+- `tests/finance-model.test.js` (`npm test`) — cobre a invariante obrigatória do D1 (transferir R$500:
+  disponível −500, investido +500, patrimônio da conta inalterado) e o cálculo da reserva (D4).
+- `plano.html` — CRUD de categorias (ORC-01) com flag `essencial` (ORC-02); card de reserva agora
+  mostra saldo somente-leitura e permite configurar multiplicador + conta da reserva.
+- `lancamentos.html` — categorias carregadas do banco; ao escolher "Investimentos" ou "Aporte reserva
+  de emergência" como classificação, o formulário vira uma transferência (ORC-03): pede/cria a posição
+  de investimento e chama a RPC em vez de um insert comum.
+
+---
+
+## 9. Sprint 3 — Notas de implementação (Patrimônio, D2)
+
+Branch stackada sobre a do Sprint 2 (`claude/sprint-2-modelo-financeiro-ru934l`), não sobre `main` —
+nem o PR do Sprint 1 nem o do Sprint 2 estavam mesclados quando este sprint começou, e Patrimônio
+depende do modelo de categorias/investimento que o Sprint 2 introduziu (`categories`,
+`investment_positions`). Ver PRs para a ordem de merge correta.
+
+**O que foi construído:**
+
+1. **Financiamentos (D2).** Nova tabela `loans`: `valor_total`, `taxa` (mensal), `prazo`,
+   `parcela_mensal` (Price, calculada uma única vez na criação — `js/finance-model.js#pricePayment`),
+   `saldo_devedor`, `data_inicio`, conta de origem e titularidade (mesma convenção `owner_type`/
+   `member_id` das contas). **Decisão de projeto:** `saldo_devedor` nunca é editado à mão nem
+   decrementado de forma ad-hoc — é sempre derivado da tabela de amortização Price
+   (`js/finance-model.js#outstandingLoanBalance`) a partir de quantas parcelas já foram geradas como
+   lançamento (`transactions.loan_id`). Isso evita deriva de arredondamento e mantém uma única fonte
+   de verdade (a mesma lógica que calculou a parcela na criação também sabe o saldo a qualquer momento).
+
+2. **Parcela como saída recorrente automática.** Sem backend/cron neste projeto (é só front-end +
+   Supabase), a "geração automática todo mês" é feita por criação preguiçosa ao carregar a página —
+   mesmo padrão já usado para faturas de cartão em `lancamentos.html` (`getOrCreateInvoices`). A cada
+   carregamento de `patrimonio.html`, `ensureLoanInstallments()` compara quantas parcelas já deveriam
+   existir (contando meses de `data_inicio` até hoje) contra quantas já foram geradas, e insere as que
+   faltam como `transactions` (classificação "Financiamentos", já semeada no Sprint 2). Um financiamento
+   só pode ser excluído enquanto nenhuma parcela foi gerada (`ON DELETE RESTRICT` de `transactions.loan_id`
+   → `loans.id`, com a mensagem de erro tratada na UI).
+
+3. **Bens materiais (D2).** Nova tabela `assets`: nome, categoria (texto livre), `valor_mercado`,
+   financiamento vinculado opcional (`loan_id`, um bem por financiamento — índice único parcial) e
+   titularidade. Valor líquido = `valor_mercado − saldo_devedor` do financiamento vinculado
+   (`js/finance-model.js#assetNetWorth`), calculado sempre no cliente, nunca persistido.
+
+4. **UI do Patrimônio (PAT-01..04).** A antiga faixa de 3 KPIs + grade de contas foi substituída por
+   3 cards clicáveis (Financeiro / Bens Materiais / Dívidas) que alternam um único painel de expansão
+   abaixo — mantendo as abas Minhas/Do parceiro/Conjuntas já existentes. Bens e financiamentos abrem
+   um "ticket" (modal de detalhe) com editar/excluir; cartões dentro de Dívidas reaproveitam a tela de
+   detalhe da conta já existente como "drill-down" em vez de duplicar essa UI (ela já mostra fatura
+   atual/limite/vencimento por cartão) — a tela de detalhe dedicada ao cartão é o PAT-06 do Sprint 4.
+
+**Onde está o quê:**
+- `supabase/migrations/20260717130000_sprint3_patrimonio.sql` — tabelas `loans`/`assets`,
+  `transactions.loan_id`, RLS. Depende da migração do Sprint 2 já ter rodado. **Também precisa ser
+  colada manualmente no SQL Editor do Supabase.**
+- `js/finance-model.js` — `pricePayment`, `amortizationSchedule`, `outstandingLoanBalance`,
+  `assetNetWorth` (funções puras, sem I/O).
+- `tests/finance-model.test.js` — cobre a parcela Price contra um valor de referência conhecido, que a
+  soma das amortizações fecha o principal com saldo final exatamente zero, e o valor líquido do bem.
+- `patrimonio.html` — os 3 cards de resumo, os painéis de expansão, cadastro/ticket de bem, cadastro/
+  ticket de financiamento (com pré-visualização da parcela Price ao digitar) e a geração preguiçosa de
+  parcelas.
+
+---
+
+## 10. Sprint 4 — Notas de implementação (telas de detalhe)
+
+Branch stackada sobre a do Sprint 3 (`claude/sprint-3-patrimonio-b85dcc`), pelo mesmo motivo dos
+sprints anteriores: PAT-05/06/07 dependem do modelo de contas/cartões/investimentos/financiamentos já
+existente, e nenhuma das branches anteriores estava mesclada em `main` quando este sprint começou.
+
+**O que foi construído (majoritariamente apresentação sobre o modelo já existente, como o próprio
+sprint descreveu):**
+
+1. **PAT-05 — aba "Investimentos" dentro do detalhe da conta.** A tela de detalhe da conta já existia
+   (de um trabalho anterior aos sprints deste PRD); ganhou uma sub-aba nova ("Lançamentos" /
+   "Investimentos") que lista as posições de investimento daquela conta especificamente — sempre
+   separado do saldo atual, nunca somado a ele (D1: saldo atual = só `accounts.balance` + movimentações
+   sem cartão; investido mora só na sua aba).
+
+2. **PAT-07 — projeção de valor de investimento.** Como não havia nenhuma forma de setar `taxa` ou
+   `rendimento_acumulado` de uma posição em nenhum sprint anterior (só nome/tipo/vencimento, na criação,
+   via transferência em Lançamentos), este sprint adicionou um modal de edição de posição (nome, tipo,
+   vencimento, taxa mensal, rendimento acumulado — `valor_aplicado` continua só de leitura, muda
+   somente por transferência). A "Projeção" pedida pelo PAT-07 (`js/finance-model.js#investmentProjection`)
+   compõe `valor_aplicado + rendimento_acumulado` pela taxa mensal até o vencimento (ou 12 meses, se a
+   posição não tiver vencimento) — mesma função usada tanto na aba da conta (PAT-05) quanto na visão
+   geral de investimentos, nova e household-wide (alcançada por um link "Ver detalhes" no card
+   Financeiro do Patrimônio).
+
+3. **PAT-06 — tela de detalhe do cartão.** Nova, com as 3 abas pedidas (Fatura atual / Total gasto e
+   dívida / Limite restante) e a lista de lançamentos do cartão abaixo, com um filtro opcional de
+   fatura. Alcançável de três lugares: linha do cartão na expansão de Dívidas, o widget do cartão dentro
+   do detalhe da conta (agora clicável), e via querystring (`?view=card&cardId=X&period=Y`).
+
+4. **LAN-02 — ticket de fatura clicável.** O ticket de cada fatura no modal "Faturas" de
+   `lancamentos.html` agora navega para `patrimonio.html?view=card&cardId=...&period=...`, abrindo
+   direto o detalhe do cartão (PAT-06) já com o filtro de lançamentos naquela fatura pré-selecionado.
+
+**Teste de navegação:** como o ambiente do agente não tem acesso à internet nem ao Supabase real, a
+navegação entre as 5 telas de `patrimonio.html` (visão geral, detalhe de conta, detalhe de cartão,
+investimentos, mais os 4 modais) e o link do ticket de fatura em `lancamentos.html` foi testada de
+ponta a ponta num Chromium headless local com um stub mínimo do cliente Supabase (dados fixos, sem
+rede) — cobrindo: abrir/fechar cada view, trocar de sub-aba e aba, os dois deep-links via querystring,
+e conferindo que os números calculados (parcela Price, saldo devedor, projeção de investimento, filtro
+de fatura) batem com o esperado. Sem erros de JS em nenhum passo.
+
+**Onde está o quê:**
+- `js/finance-model.js` — `monthsBetween`, `annualizedRate`, `investmentProjection`.
+- `tests/finance-model.test.js` — cobre a projeção com/sem vencimento, taxa zero, vencimento já passado.
+- `patrimonio.html` — sub-abas do detalhe da conta, modal de edição de posição, view "Investimentos"
+  (PAT-07), view "Detalhe do Cartão" (PAT-06), parsing de querystring no init.
+- `lancamentos.html` — ticket de fatura agora navega para o PAT-06 (LAN-02).
+
+---
+
+## 11. Sprint 5 — Notas de implementação (Projetos & Independência, D3)
+
+Branch stackada sobre a do Sprint 4. Cuidado central do sprint: **não haver dupla contagem entre
+projetos e independência** — resolvido com três decisões estruturais:
+
+1. **PRJ-01 — fusão EPF ⇒ Projetos.** Os 4 `event_type` da antiga tabela `independence_events`
+   (`withdrawal`/`extra_deposit`/`expense`/`income`) mapeiam 1:1 para os 4 tipos do D3 — a migração
+   converte cada evento existente num projeto (categoria "outro", prioridade "Desejo") e **dropa a
+   tabela**. Toda a UI de eventos em `futuro.html` (seção, modal, handlers) foi removida; a simulação
+   agora lê os projetos diretamente.
+
+2. **PRJ-02 (D3) — campo único `tipo`.** `projects.tipo` (check nos 4 valores, default
+   `retirada_unica` — que preenche as linhas legadas com o comportamento idêntico ao anterior) +
+   `end_date` para os recorrentes. A classificação acumulação/despesa/receita é **derivada**
+   (`js/finance-model.js#projectKind`), exibida como badge — sem campo extra. `tipo` (natureza
+   financeira, D3) coexiste com `project_type` (categoria temática: viagem/casa/filho… — PRJ-05);
+   são eixos diferentes do mesmo projeto.
+
+3. **PRJ-03 — pool único, aporte como recorte.** Três garantias anti-dupla-contagem:
+   - **Taxa única:** o PMT de projeto usa SEMPRE a taxa do pool
+     (`independence_params.real_rate_accumulation`, convertida para mensal) — o campo
+     "rentabilidade mensal" por projeto foi removido do formulário e `monthly_rate` ficou deprecada
+     (um projeto não rende diferente do pool onde o dinheiro realmente está).
+   - **Aporte como recorte:** a simulação usa só o `monthly_contribution` total; os PMTs por projeto
+     são etiquetas de alocação dentro dele (a UI de Projetos mostra "recorte do aporte de IF" e avisa
+     se a soma dos PMTs exceder o aporte total). Somar os PMTs nunca adiciona nada à curva.
+   - **Retirada do montante total:** na data-alvo, a retirada sai do pool inteiro
+     (patrimônio − valor), exatamente como o PRD pede.
+   Na aba Independência aparece **só o agregado** (nº por tipo, totais, recorte do aporte); o detalhe
+   por projeto fica só na aba Projetos.
+
+**Motor de simulação extraído:** `runSimulation` saiu de `futuro.html` para
+`js/finance-model.js#simulateIndependence` (puro, com data de início injetada), viabilizando os
+testes-chave: com taxa 0, patrimônio final = P0 + aportes totais − retiradas − despesas recorrentes
+(qualquer excedente denunciaria PMT somado por cima); curvas com/sem projeto idênticas antes da
+data-alvo e diferindo exatamente pelo valor retirado depois. O exemplo literal do PRD também é
+testado: R$500k em dez/2040 a 0,5% a.m. (173 meses a partir de jul/2026) ⇒ ~R$1.824,95/mês.
+
+**Onde está o quê:**
+- `supabase/migrations/20260718170000_sprint5_projetos.sql` — `projects.tipo` + `end_date`, migração
+  EPF→projetos, drop de `independence_events`. **Aplicada** manualmente no SQL Editor do Supabase
+  em 2026-07-20 (MCP do Supabase ficou indisponível nesta sessão durante o sprint).
+- `js/finance-model.js` — `PROJECT_TIPOS`, `projectKind`, `annualToMonthlyRate`,
+  `projectMonthlyContribution`, `projectsToSimulationEvents`, `simulateIndependence`.
+- `tests/finance-model.test.js` — 30 testes no total (21 anteriores + 9 novos).
+- `projetos.html` — seletor de tipo D3 com campos condicionais, badge derivado, PMT pela taxa do
+  pool, KPI/nota de recorte do aporte.
+- `futuro.html` — UI de EPF removida, simulação via projetos, card agregado "Projetos no plano".
