@@ -514,22 +514,55 @@
     .imp-dot.dup { background: var(--text-muted); }
     .imp-dot.ask { background: #d97706; }
 
-    .import-preview-wrap { max-height: 46vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); }
+    .import-preview-hint { font-size: .75rem; color: var(--text-muted); margin: 0 0 12px; line-height: 1.5; }
+    .import-preview-wrap { max-height: 52vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-md); }
     .import-preview-table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
     .import-preview-table thead th {
       position: sticky; top: 0; background: var(--surface-alt); z-index: 1;
       text-align: left; padding: 9px 12px; font-weight: 600; color: var(--text-muted);
       font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border);
     }
-    .import-preview-table tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .import-preview-table tbody td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
     .import-preview-table tbody tr:last-child td { border-bottom: none; }
     .import-preview-table tr.imp-dup td { opacity: .5; }
     .import-preview-table tr.imp-ask { background: #fffbeb; }
-    .imp-val-in  { color: var(--color-income); font-weight: 600; text-align: right; white-space: nowrap; }
-    .imp-val-out { color: var(--color-expense); font-weight: 600; text-align: right; white-space: nowrap; }
+    .imp-val-in  { color: var(--color-income); font-weight: 600; }
+    .imp-val-out { color: var(--color-expense); font-weight: 600; }
     .imp-desc { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .imp-cat-select { width: 100%; padding: 5px 8px; font-size: .8125rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
-    .imp-cat-select.needs-pick { border-color: #d97706; background: #fffbeb; }
+
+    /* Inputs editáveis (descrição/estabelecimento) */
+    .imp-edit {
+      width: 100%; padding: 6px 8px; font-size: .8125rem; color: var(--text-primary);
+      border: 1px solid transparent; border-radius: var(--radius-sm); background: var(--surface-alt);
+      transition: border-color .12s, background .12s;
+    }
+    .imp-edit:hover { border-color: var(--border); }
+    .imp-edit:focus { outline: none; border-color: var(--primary); background: var(--surface); }
+
+    /* Valor + toggle de direção */
+    .imp-val-cell { white-space: nowrap; }
+    .imp-dir {
+      display: inline-block; font-size: .625rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .03em; padding: 3px 8px; border-radius: var(--radius-full); cursor: pointer;
+      border: 1px solid transparent; margin-right: 8px; user-select: none;
+    }
+    .imp-dir.out { background: var(--danger-light, #fff1f2); color: var(--color-expense); border-color: #fecdd3; }
+    .imp-dir.in  { background: #ecfdf5; color: var(--color-income); border-color: #a7f3d0; }
+    .imp-dir:hover { filter: brightness(.97); }
+    .imp-amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .imp-amount.out { color: var(--color-expense); }
+    .imp-amount.in  { color: var(--color-income); }
+
+    /* Select de categoria — legível e clicável */
+    .imp-cat-select {
+      width: 100%; min-height: 34px; padding: 6px 28px 6px 10px; font-size: .8125rem;
+      color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md);
+      background-color: var(--surface); cursor: pointer; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 9px center;
+    }
+    .imp-cat-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+    .imp-cat-select.needs-pick { border-color: #d97706; background-color: #fffbeb; font-weight: 600; }
     .imp-badge {
       display: inline-block; font-size: .625rem; font-weight: 700; text-transform: uppercase;
       letter-spacing: .03em; padding: 2px 6px; border-radius: var(--radius-full); margin-left: 6px;
@@ -1193,7 +1226,7 @@
 
 <!-- ═══ Modal IMPORTAÇÃO OFX/CSV (LAN-05) ═══ -->
 <div class="modal-overlay" id="modal-import">
-  <div class="modal modal-lg">
+  <div class="modal modal-lg" style="max-width:920px;width:96vw">
     <div class="modal-header">
       <span class="modal-title" id="modal-import-title">Importar extrato / fatura</span>
       <button class="btn-ghost btn-icon modal-close" id="modal-import-close">
@@ -1247,14 +1280,17 @@
     <!-- Etapa 2: preview + categorização -->
     <div id="import-step-preview" style="display:none">
       <div class="import-summary" id="import-summary"></div>
+      <p class="import-preview-hint">Revise antes de importar: você pode editar a descrição, o estabelecimento,
+        alternar entrada/saída (clique no rótulo) e escolher a categoria de cada lançamento.</p>
       <div class="import-preview-wrap">
         <table class="import-preview-table">
           <thead>
             <tr>
-              <th style="width:78px">Data</th>
-              <th>Descrição</th>
-              <th style="width:110px;text-align:right">Valor</th>
-              <th style="width:180px">Categoria</th>
+              <th style="width:74px">Data</th>
+              <th style="min-width:180px">Descrição</th>
+              <th style="min-width:150px">Estabelecimento</th>
+              <th style="width:150px">Valor</th>
+              <th style="width:200px">Categoria</th>
             </tr>
           </thead>
           <tbody id="import-preview-body"></tbody>
@@ -1270,7 +1306,7 @@
 
 <!-- ═══ Modal CONFIRMAR CATEGORIA (fila LAN-05) ═══ -->
 <div class="modal-overlay" id="modal-review">
-  <div class="modal modal-lg">
+  <div class="modal modal-lg" style="max-width:920px;width:96vw">
     <div class="modal-header">
       <span class="modal-title">Confirmar categoria</span>
       <button class="btn-ghost btn-icon modal-close" id="modal-review-close">
@@ -1282,16 +1318,17 @@
     </div>
     <p style="font-size:.8438rem;color:var(--text-secondary);margin-bottom:14px">
       Estes lançamentos foram importados mas não puderam ser categorizados com segurança.
-      Escolha a categoria de cada um — da próxima vez, a mesma origem virá preenchida sozinha.
+      Ajuste a descrição/estabelecimento se quiser e escolha a categoria — da próxima vez, a mesma origem virá preenchida sozinha.
     </p>
     <div class="import-preview-wrap" style="max-height:52vh">
       <table class="import-preview-table">
         <thead>
           <tr>
-            <th style="width:78px">Data</th>
-            <th>Descrição</th>
+            <th style="width:74px">Data</th>
+            <th style="min-width:180px">Descrição</th>
+            <th style="min-width:150px">Estabelecimento</th>
             <th style="width:110px;text-align:right">Valor</th>
-            <th style="width:180px">Categoria</th>
+            <th style="width:200px">Categoria</th>
           </tr>
         </thead>
         <tbody id="review-body"></tbody>
@@ -2078,10 +2115,16 @@
       (data || []).forEach(r => existing.add(r.import_fingerprint));
     }
 
+    // Cartão: o sinal das COMPRAS varia por banco — detecta o dominante em vez de chutar
+    const purchaseSign = importDest === 'card'
+      ? ImportParser.detectCardPurchaseSign(importParsed.transactions) : null;
+
     importRows = raw.map(r => {
       const isDup = existing.has(r.fp);
-      // Direção conforme o destino: conta usa o sinal; cartão trata positivo=compra
-      const isExpense = importDest === 'card' ? r.amount > 0 : r.amount < 0;
+      // Conta: negativo = saída. Cartão: sinal das compras = saída (o resto é pagamento/estorno).
+      const isExpense = importDest === 'card'
+        ? Math.sign(r.amount) === purchaseSign
+        : r.amount < 0;
       const suggestion = ImportParser.suggestCategory(categoryModel, r.description);
       let classification, needsReview;
       if (suggestion.confident && suggestion.classification) {
@@ -2092,6 +2135,7 @@
       return {
         date: r.date,
         description: r.description,
+        establishment: r.establishment || r.description,
         amount: Math.abs(r.amount),
         direction: isExpense ? 'expense' : 'income',
         fingerprint: r.fp,
@@ -2108,47 +2152,84 @@
     document.getElementById('import-step-preview').style.display = '';
   }
 
-  function renderImportPreview() {
+  function updateImportSummary() {
     const newRows = importRows.filter(r => !r.isDup);
     const dupCount = importRows.length - newRows.length;
     const askCount = newRows.filter(r => r.needsReview).length;
     const cardPayIgnored = importDest === 'card'
-      ? importRows.filter(r => !r.isDup && r.direction === 'income').length : 0;
+      ? newRows.filter(r => r.direction === 'income').length : 0;
 
     document.getElementById('import-summary').innerHTML = `
       <span class="imp-stat"><span class="imp-dot new"></span>${newRows.length} novo(s)</span>
       <span class="imp-stat"><span class="imp-dot dup"></span>${dupCount} duplicado(s) ignorado(s)</span>
       <span class="imp-stat"><span class="imp-dot ask"></span>${askCount} sem categoria (irão para a fila)</span>
-      ${cardPayIgnored ? `<span class="imp-stat" style="color:var(--text-muted)">${cardPayIgnored} pagamento(s)/estorno(s) do cartão não serão importados</span>` : ''}
+      ${cardPayIgnored ? `<span class="imp-stat" style="color:var(--text-muted)">${cardPayIgnored} pagamento(s)/estorno(s) não serão importados</span>` : ''}
     `;
+    const toImport = importDest === 'card' ? newRows.filter(r => r.direction === 'expense').length : newRows.length;
+    document.getElementById('btn-import-confirm').disabled = toImport === 0;
+  }
 
+  function renderImportPreview() {
     const body = document.getElementById('import-preview-body');
     body.innerHTML = importRows.map((r, i) => {
-      const cls = [r.isDup ? 'imp-dup' : '', (!r.isDup && r.needsReview) ? 'imp-ask' : ''].filter(Boolean).join(' ');
-      const valCls = r.direction === 'expense' ? 'imp-val-out' : 'imp-val-in';
+      if (r.isDup) {
+        return `
+          <tr class="imp-dup">
+            <td>${fmtDate(r.date)}</td>
+            <td class="imp-desc" title="${escHtml(r.description)}">${escHtml(r.description)}<span class="imp-badge dup">duplicado</span></td>
+            <td><span style="color:var(--text-muted)">${escHtml(r.establishment)}</span></td>
+            <td style="text-align:right;color:var(--text-muted);white-space:nowrap">${fmtBRL(r.amount)}</td>
+            <td><span style="color:var(--text-muted)">—</span></td>
+          </tr>`;
+      }
+      const dirCls = r.direction === 'expense' ? 'out' : 'in';
+      const dirLabel = r.direction === 'expense' ? 'Saída' : 'Entrada';
       const sign = r.direction === 'expense' ? '−' : '+';
-      const catCell = r.isDup
-        ? '<span style="color:var(--text-muted)">—</span>'
-        : `<select class="imp-cat-select ${r.needsReview ? 'needs-pick' : ''}" data-i="${i}">${catOptionsHtml(r.classification)}</select>`;
       return `
-        <tr class="${cls}">
+        <tr class="${r.needsReview ? 'imp-ask' : ''}">
           <td>${fmtDate(r.date)}</td>
-          <td class="imp-desc" title="${escHtml(r.description)}">${escHtml(r.description)}${r.isDup ? '<span class="imp-badge dup">duplicado</span>' : ''}</td>
-          <td class="${valCls}">${sign} ${fmtBRL(r.amount)}</td>
-          <td>${catCell}</td>
+          <td><input class="imp-edit" data-i="${i}" data-f="description" value="${escHtml(r.description)}" /></td>
+          <td><input class="imp-edit" data-i="${i}" data-f="establishment" value="${escHtml(r.establishment)}" /></td>
+          <td class="imp-val-cell">
+            <button type="button" class="imp-dir ${dirCls}" data-i="${i}" title="Clique para alternar entrada/saída">${dirLabel}</button>
+            <span class="imp-amount ${dirCls}">${sign} ${fmtBRL(r.amount)}</span>
+          </td>
+          <td><select class="imp-cat-select ${r.needsReview ? 'needs-pick' : ''}" data-i="${i}">${catOptionsHtml(r.classification)}</select></td>
         </tr>`;
     }).join('');
 
+    // Edição de descrição / estabelecimento
+    body.querySelectorAll('.imp-edit').forEach(inp => {
+      inp.addEventListener('input', () => { importRows[+inp.dataset.i][inp.dataset.f] = inp.value; });
+    });
+    // Categoria
     body.querySelectorAll('.imp-cat-select').forEach(sel => {
       sel.addEventListener('change', () => {
         const i = +sel.dataset.i;
         importRows[i].classification = sel.value;
         importRows[i].needsReview = !sel.value;
         sel.classList.toggle('needs-pick', !sel.value);
+        sel.closest('tr').classList.toggle('imp-ask', !sel.value);
+        updateImportSummary();
+      });
+    });
+    // Alternar direção (entrada/saída)
+    body.querySelectorAll('.imp-dir').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const i = +btn.dataset.i;
+        importRows[i].direction = importRows[i].direction === 'expense' ? 'income' : 'expense';
+        const dirCls = importRows[i].direction === 'expense' ? 'out' : 'in';
+        const sign = importRows[i].direction === 'expense' ? '−' : '+';
+        btn.className = `imp-dir ${dirCls}`;
+        btn.textContent = importRows[i].direction === 'expense' ? 'Saída' : 'Entrada';
+        const amt = btn.parentElement.querySelector('.imp-amount');
+        amt.className = `imp-amount ${dirCls}`;
+        amt.textContent = `${sign} ${fmtBRL(importRows[i].amount)}`;
+        updateImportSummary();
       });
     });
 
-    document.getElementById('btn-import-confirm').disabled = newRows.length === 0;
+    updateImportSummary();
   }
 
   async function confirmImport() {
@@ -2194,6 +2275,7 @@
       amount:            r.amount,
       date:              r.date,
       description:       r.description,
+      establishment:     r.establishment || null,
       classification:    r.needsReview ? ImportParser.NEUTRAL_CLASSIFICATION : r.classification,
       payment_method:    r.direction === 'income' ? 'transferencia' : 'debito',
       source,
@@ -2225,6 +2307,7 @@
         amount:            r.amount,
         date:              r.date,
         description:       r.description,
+        establishment:     r.establishment || null,
         classification:    r.needsReview ? ImportParser.NEUTRAL_CLASSIFICATION : r.classification,
         payment_method:    'credito',
         source,
@@ -2273,7 +2356,7 @@
       .eq('needs_category_review', true)
       .order('date', { ascending: false });
     if (error) { toast('Erro ao carregar a fila: ' + error.message, 'error'); return; }
-    reviewItems = data || [];
+    reviewItems = (data || []).map(t => ({ ...t, _desc: t.description, _est: t.establishment || '' }));
     const body = document.getElementById('review-body');
     body.innerHTML = reviewItems.map((t, i) => {
       const valCls = t.direction === 'expense' ? 'imp-val-out' : 'imp-val-in';
@@ -2281,11 +2364,15 @@
       return `
         <tr>
           <td>${fmtDate(t.date)}</td>
-          <td class="imp-desc" title="${escHtml(t.description)}">${escHtml(t.description)}</td>
-          <td class="${valCls}">${sign} ${fmtBRL(t.amount)}</td>
+          <td><input class="imp-edit" data-i="${i}" data-f="_desc" value="${escHtml(t._desc)}" /></td>
+          <td><input class="imp-edit" data-i="${i}" data-f="_est" value="${escHtml(t._est)}" /></td>
+          <td class="${valCls}" style="text-align:right;white-space:nowrap">${sign} ${fmtBRL(t.amount)}</td>
           <td><select class="imp-cat-select needs-pick" data-i="${i}">${catOptionsHtml('')}</select></td>
         </tr>`;
     }).join('');
+    body.querySelectorAll('.imp-edit').forEach(inp => {
+      inp.addEventListener('input', () => { reviewItems[+inp.dataset.i][inp.dataset.f] = inp.value; });
+    });
     body.querySelectorAll('.imp-cat-select').forEach(sel => {
       sel.addEventListener('change', () => sel.classList.toggle('needs-pick', !sel.value));
     });
@@ -2297,7 +2384,15 @@
     const updates = [];
     selects.forEach(sel => {
       const val = sel.value;
-      if (val) updates.push({ id: reviewItems[+sel.dataset.i].id, classification: val });
+      if (val) {
+        const it = reviewItems[+sel.dataset.i];
+        updates.push({
+          id: it.id,
+          classification: val,
+          description: (it._desc || '').trim() || it.description,
+          establishment: (it._est || '').trim() || null,
+        });
+      }
     });
     if (updates.length === 0) { toast('Escolha ao menos uma categoria.', 'info'); return; }
 
@@ -2306,7 +2401,7 @@
     let failed = 0;
     for (const u of updates) {
       const { error } = await _supabase.from('transactions')
-        .update({ classification: u.classification, needs_category_review: false })
+        .update({ classification: u.classification, description: u.description, establishment: u.establishment, needs_category_review: false })
         .eq('id', u.id);
       if (error) failed++;
     }

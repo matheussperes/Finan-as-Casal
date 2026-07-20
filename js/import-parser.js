@@ -129,11 +129,13 @@
       const memo = ofxTag(b, 'MEMO');
       const fitid = ofxTag(b, 'FITID');
       const description = cleanText(name && memo && name !== memo ? `${name} ${memo}` : (name || memo));
+      // Estabelecimento = o payee (NAME); se só houver MEMO, usa a própria descrição.
+      const establishment = cleanText(name || memo);
       if (!date || amount === null || amount === 0 || !description) {
         errors.push('Lançamento OFX ignorado (campos incompletos): ' + cleanText(b).slice(0, 80));
         continue;
       }
-      transactions.push({ date, amount, description, fitid: fitid || null, type: ofxTag(b, 'TRNTYPE') || null });
+      transactions.push({ date, amount, description, establishment, fitid: fitid || null, type: ofxTag(b, 'TRNTYPE') || null });
     }
     if (blocks.length === 0) errors.push('Nenhum <STMTTRN> encontrado no OFX.');
     return { kind: 'ofx', source, transactions, errors };
@@ -223,7 +225,8 @@
     amount: ['valor', 'amount', 'value', 'valor (r$)', 'valor r$', 'quantia', 'montante'],
     debit: ['debito', 'debit', 'saida', 'saidas', 'valor debito'],
     credit: ['credito', 'credit', 'entrada', 'entradas', 'valor credito'],
-    description: ['descricao', 'historico', 'description', 'memo', 'lancamento', 'title', 'titulo', 'estabelecimento', 'detalhes', 'movimentacao', 'transacao', 'nome'],
+    description: ['descricao', 'historico', 'description', 'memo', 'lancamento', 'title', 'titulo', 'detalhes', 'movimentacao', 'transacao', 'nome'],
+    establishment: ['estabelecimento', 'estabelecimento descricao', 'local', 'merchant', 'loja', 'favorecido', 'beneficiario'],
     id: ['identifier', 'id', 'identificador', 'codigo', 'document', 'documento', 'num doc'],
   };
 
@@ -305,13 +308,17 @@
       } else if (colMap.amount !== undefined && colMap.amount >= 0) {
         amount = parseAmount(r[colMap.amount]);
       }
-      const description = cleanText(colMap.description !== undefined ? r[colMap.description] : '');
+      const descCol = colMap.description !== undefined ? cleanText(r[colMap.description]) : '';
+      const estCol  = colMap.establishment !== undefined ? cleanText(r[colMap.establishment]) : '';
+      // Descrição e estabelecimento se completam: se falta um, usa o outro.
+      const description = descCol || estCol;
+      const establishment = estCol || descCol;
       const extId = colMap.id !== undefined ? cleanText(r[colMap.id]) : '';
       if (!date || amount === null || amount === 0 || !description) {
         errors.push(`Linha ${idx + (hasHeader ? 2 : 1)} ignorada (data/valor/descrição não reconhecidos).`);
         return;
       }
-      transactions.push({ date, amount, description, fitid: extId || null, type: null });
+      transactions.push({ date, amount, description, establishment, fitid: extId || null, type: null });
     });
 
     return { kind: 'csv', transactions, errors, delimiter, hasHeader, colMap, dmOrder };
@@ -389,6 +396,22 @@
     return { classification: top, confident: byClass.size === 1 || share >= 0.8 };
   }
 
+  /**
+   * Numa fatura de cartão, as COMPRAS são a esmagadora maioria das linhas —
+   * mas o sinal delas varia por banco (umas usam +compra/−pagamento, outras
+   * o contrário). Em vez de assumir, detectamos o sinal dominante: ele é o
+   * das compras. Retorna +1 ou -1 (empate/vazio → +1). A página usa isso para
+   * marcar como SAÍDA as linhas cujo sinal bate com o das compras.
+   */
+  function detectCardPurchaseSign(transactions) {
+    let pos = 0, neg = 0;
+    for (const t of transactions || []) {
+      if (t.amount > 0) pos++;
+      else if (t.amount < 0) neg++;
+    }
+    return neg > pos ? -1 : 1;
+  }
+
   return {
     decodeBuffer,
     cleanText,
@@ -401,6 +424,7 @@
     fingerprint,
     buildCategoryModel,
     suggestCategory,
+    detectCardPurchaseSign,
     NEUTRAL_CLASSIFICATION,
   };
 });

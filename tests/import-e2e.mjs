@@ -12,6 +12,7 @@ const ROOT = path.resolve(__dirname, '..');
 
 const ofx = readFileSync(path.join(__dirname, 'fixtures', 'extrato-conta.ofx'), 'utf-8');
 const csvCard = readFileSync(path.join(__dirname, 'fixtures', 'fatura-cartao.csv'), 'utf-8');
+const ofxCardNeg = readFileSync(path.join(__dirname, 'fixtures', 'fatura-cartao-negativo.ofx'), 'utf-8');
 
 /* Stub do Supabase: DB em memória com um query-builder thenable que cobre os
    encadeamentos usados pela página (select/eq/in/gte/lte/order/limit/insert/
@@ -160,6 +161,13 @@ check('resumo: 1 sem categoria (Padaria não ensinada)', /1 sem categoria/.test(
 const uberCat = await page.$eval('#import-preview-body tr:first-child .imp-cat-select', el => el.value).catch(() => null);
 check('Uber vem pré-categorizado como Transporte', uberCat === 'Transporte', String(uberCat));
 
+// Estabelecimento preenchido no preview (coluna 3 = input establishment)
+const uberEst = await page.$eval('#import-preview-body tr:first-child .imp-edit[data-f="establishment"]', el => el.value).catch(() => null);
+check('estabelecimento preenchido no preview', uberEst === 'UBER *TRIP 0702', String(uberEst));
+
+// Editar a descrição do Uber antes de confirmar (deve persistir)
+await page.fill('#import-preview-body tr:first-child .imp-edit[data-f="description"]', 'UBER CORRIGIDO NA VALIDACAO');
+
 await page.click('#btn-import-confirm');
 await page.waitForTimeout(400);
 
@@ -169,6 +177,9 @@ const salario = imported.find(t => /SALARIO/.test(t.description));
 check('Salário importado como entrada (income)', salario && salario.direction === 'income', salario && salario.direction);
 const aluguel = imported.find(t => /ALUGUEL/.test(t.description));
 check('Aluguel importado como saída (expense) e categoria Moradia', aluguel && aluguel.direction === 'expense' && aluguel.classification === 'Moradia');
+check('estabelecimento gravado na transação', aluguel && aluguel.establishment === 'ALUGUEL APARTAMENTO', aluguel && aluguel.establishment);
+const uberEdited = imported.find(t => t.establishment === 'UBER *TRIP 0702' && t.date === '2026-07-02');
+check('descrição editada no preview foi persistida', uberEdited && uberEdited.description === 'UBER CORRIGIDO NA VALIDACAO', uberEdited && uberEdited.description);
 const padaria = imported.find(t => /PADARIA/.test(t.description));
 check('Padaria caiu na fila (needs_category_review + neutra)', padaria && padaria.needs_category_review === true && padaria.classification === 'Classificação neutra');
 check('todos os importados têm import_fingerprint', imported.every(t => !!t.import_fingerprint));
@@ -222,6 +233,25 @@ check('5 compras importadas no cartão (pagamento excluído)', cardTx.length ===
 check('compras do cartão têm invoice_id e direction expense', cardTx.every(t => t.invoice_id && t.direction === 'expense'));
 const invoicesCreated = await page.evaluate(() => window.__db.invoices.length);
 check('faturas foram criadas para as compras', invoicesCreated >= 1, `${invoicesCreated}`);
+
+/* ── 5. Cartão com compras NEGATIVAS (bug reportado): devem virar SAÍDA ── */
+await page.evaluate(() => { window.__db.transactions = window.__db.transactions.filter(t => t.credit_card_id !== 'card-1'); });
+await page.click('#btn-import');
+await page.waitForTimeout(150);
+await page.click('.import-dest-btn[data-dest="card"]');
+await page.selectOption('#import-card', 'card-1');
+await setFile('fatura-cartao-negativo.ofx', ofxCardNeg);
+await page.click('#btn-import-parse');
+await page.waitForTimeout(300);
+// No preview, as 4 compras (negativas no arquivo) devem estar marcadas como Saída
+const dirLabels = await page.$$eval('#import-preview-body .imp-dir', els => els.map(e => e.textContent.trim()));
+const saidas = dirLabels.filter(l => l === 'Saída').length;
+check('compras negativas do cartão aparecem como Saída (não Entrada)', saidas === 4, `${saidas} saídas de ${dirLabels.length}`);
+await page.click('#btn-import-confirm');
+await page.waitForTimeout(400);
+const cardNegTx = await page.evaluate(() => window.__db.transactions.filter(t => t.credit_card_id === 'card-1'));
+check('4 compras negativas importadas como expense', cardNegTx.length === 4 && cardNegTx.every(t => t.direction === 'expense'), `${cardNegTx.length}`);
+check('pagamento positivo (1500) NÃO importado no cartão', !cardNegTx.some(t => t.amount === 1500));
 
 if (pageErrors.length) { console.log('\nErros de página:'); pageErrors.forEach(e => console.log('  ' + e)); }
 await browser.close();
