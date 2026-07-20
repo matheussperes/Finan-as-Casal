@@ -418,6 +418,17 @@
 
   <script>
     /* ─────────────────────────────────────────────
+       Convite do cônjuge: se o link de convite cair
+       aqui (Site URL), leva o hash de sessão para a
+       página de definição de senha ANTES do client
+       consumir o token.
+    ───────────────────────────────────────────── */
+    if (window.location.hash.includes('type=invite')) {
+      window.location.replace('convite.html' + window.location.hash);
+      throw new Error('redirecting-to-invite');
+    }
+
+    /* ─────────────────────────────────────────────
        Supabase config
        Substitua com suas credenciais reais
     ───────────────────────────────────────────── */
