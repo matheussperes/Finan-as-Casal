@@ -113,6 +113,21 @@
       font-size:.75rem; color:var(--text-muted); margin-top:2px;
     }
 
+    /* ─── Status de acesso do cônjuge ─── */
+    .partner-badge {
+      display:inline-flex; align-items:center; gap:5px;
+      padding:4px 10px; border-radius:var(--radius-full);
+      font-size:.6875rem; font-weight:700; letter-spacing:.02em;
+    }
+    .partner-badge.none     { background:var(--surface-alt); color:var(--text-muted); border:1px solid var(--border); }
+    .partner-badge.pending  { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+    .partner-badge.accepted { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
+    .partner-resend {
+      background:none; border:none; cursor:pointer; padding:0;
+      color:var(--primary); font-weight:600; font-size:.75rem;
+      text-decoration:underline;
+    }
+
     /* ─── Contas bancárias ─── */
     .account-row {
       display:grid;
@@ -502,6 +517,7 @@
                   </svg>
                   Dados do cônjuge
                 </div>
+                <span class="partner-badge none" id="partner-status-badge" style="display:none">—</span>
               </div>
               <div class="section-card-body">
                 <div class="profile-avatar-row">
@@ -520,6 +536,14 @@
                   <div class="form-group">
                     <label class="form-label">E-mail</label>
                     <input class="input" type="email" id="partner-email" placeholder="email@exemplo.com" />
+                    <span class="form-hint" id="partner-invite-hint">
+                      Ao salvar com o e-mail preenchido, seu cônjuge recebe um convite
+                      para acessar a plataforma com a mesma visão dos dados do casal.
+                    </span>
+                    <span class="form-hint" id="partner-resend-row" style="display:none">
+                      Convite ainda não aceito.
+                      <button type="button" class="partner-resend" id="btn-resend-invite">Reenviar convite</button>
+                    </span>
                   </div>
                   <div class="form-group">
                     <label class="form-label">Data de nascimento</label>
@@ -904,6 +928,43 @@ function fillPartnerProfile() {
   document.getElementById('partner-email').value              = partnerData.email || '';
   document.getElementById('partner-birth').value              = partnerData.birth_date || '';
   document.getElementById('partner-income').value             = partnerData.monthly_income || 0;
+  renderPartnerStatus();
+}
+
+/* Badge + campo de e-mail conforme o status de acesso do cônjuge */
+function renderPartnerStatus() {
+  const badge      = document.getElementById('partner-status-badge');
+  const resendRow  = document.getElementById('partner-resend-row');
+  const hint       = document.getElementById('partner-invite-hint');
+  const emailInput = document.getElementById('partner-email');
+  const accepted   = partnerData.invite_status === 'accepted' && partnerData.user_id;
+
+  badge.style.display = 'inline-flex';
+  badge.classList.remove('none', 'pending', 'accepted');
+
+  if (accepted) {
+    badge.classList.add('accepted');
+    badge.textContent = 'Acesso ativo';
+    resendRow.style.display = 'none';
+    hint.textContent = 'Seu cônjuge já acessa a plataforma com este e-mail. O e-mail de login não pode ser alterado por aqui.';
+    emailInput.disabled = true;
+    emailInput.style.background = 'var(--surface-alt)';
+    emailInput.style.cursor = 'not-allowed';
+  } else if (partnerData.invite_status === 'pending') {
+    badge.classList.add('pending');
+    badge.textContent = 'Convite pendente';
+    resendRow.style.display = 'block';
+    emailInput.disabled = false;
+    emailInput.style.background = '';
+    emailInput.style.cursor = '';
+  } else {
+    badge.classList.add('none');
+    badge.textContent = 'Sem acesso';
+    resendRow.style.display = 'none';
+    emailInput.disabled = false;
+    emailInput.style.background = '';
+    emailInput.style.cursor = '';
+  }
 }
 
 function fillHousehold() {
@@ -994,18 +1055,25 @@ async function saveMyProfile() {
 ─────────────────────────────────────────────── */
 async function savePartner() {
   const name   = document.getElementById('partner-name').value.trim();
-  const email  = document.getElementById('partner-email').value.trim();
+  const email  = document.getElementById('partner-email').value.trim().toLowerCase();
   const birth  = document.getElementById('partner-birth').value;
   const income = parseFloat(document.getElementById('partner-income').value) || 0;
   if (!name) { showToast('Informe o nome do cônjuge', 'error'); return; }
+
+  const prevStatus = partnerData.invite_status || 'none';
+  const prevEmail  = (partnerData.email || '').trim().toLowerCase();
+  const accepted   = prevStatus === 'accepted' && partnerData.user_id;
 
   const btn = document.getElementById('btn-save-partner');
   btn.classList.add('btn-loading'); btn.disabled = true;
 
   let error;
   if (partnerMemberId) {
+    // Com acesso ativo, o e-mail de login não é alterado por aqui.
+    const payload = { name, birth_date: birth || null, monthly_income: income, updated_at: new Date().toISOString() };
+    if (!accepted) payload.email = email || null;
     const res = await _supabase.from('members')
-      .update({ name, email: email || null, birth_date: birth || null, monthly_income: income, updated_at: new Date().toISOString() })
+      .update(payload)
       .eq('id', partnerMemberId).eq('household_id', householdId);
     error = res.error;
   } else {
@@ -1022,10 +1090,57 @@ async function savePartner() {
   btn.classList.remove('btn-loading'); btn.disabled = false;
   if (error) { showToast('Erro: ' + error.message, 'error'); return; }
 
-  partnerData = { ...partnerData, name, email, birth_date: birth, monthly_income: income };
+  partnerData = { ...partnerData, name, birth_date: birth, monthly_income: income };
+  if (!accepted) partnerData.email = email;
   document.getElementById('partner-avatar').textContent       = initials(name);
   document.getElementById('partner-display-name').textContent = name;
-  showToast('Dados do cônjuge atualizados!', 'success');
+
+  /* CFG-01: e-mail preenchido e cônjuge ainda sem acesso → dispara o convite.
+     Se já existe convite pendente para o MESMO e-mail, não reenvia
+     automaticamente (use o botão "Reenviar convite"). */
+  const shouldInvite = email && !accepted &&
+    !(prevStatus === 'pending' && email === prevEmail);
+
+  if (shouldInvite) {
+    showToast('Dados salvos. Enviando convite…', 'info');
+    await sendInvite(email, name);
+  } else {
+    showToast('Dados do cônjuge atualizados!', 'success');
+  }
+  renderPartnerStatus();
+}
+
+/* Chama a Edge Function invite-partner (autenticada com o JWT da sessão) */
+async function sendInvite(email, name) {
+  const { data, error } = await _supabase.functions.invoke('invite-partner', {
+    body: { email, name },
+  });
+  if (error) {
+    let msg = 'Falha ao enviar o convite.';
+    try {
+      const j = await error.context.json();
+      if (j && j.message) msg = j.message;
+    } catch (_) { /* mantém msg padrão */ }
+    showToast(msg, 'error');
+    return false;
+  }
+  partnerData.invite_status = 'pending';
+  partnerData.invited_at    = new Date().toISOString();
+  showToast(data?.message || 'Convite enviado!', 'success');
+  return true;
+}
+
+async function resendInvite() {
+  const email = (document.getElementById('partner-email').value.trim() || partnerData.email || '').toLowerCase();
+  const name  = document.getElementById('partner-name').value.trim() || partnerData.name || '';
+  if (!email) { showToast('Informe o e-mail do cônjuge', 'error'); return; }
+
+  const btn = document.getElementById('btn-resend-invite');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  await sendInvite(email, name);
+  btn.disabled = false; btn.textContent = original;
+  renderPartnerStatus();
 }
 
 /* ──────────────────────────────────────────────
@@ -1247,6 +1362,7 @@ function bindEvents() {
   // Cônjuge
   document.getElementById('btn-save-partner') .addEventListener('click', savePartner);
   document.getElementById('btn-reset-partner').addEventListener('click', fillPartnerProfile);
+  document.getElementById('btn-resend-invite').addEventListener('click', resendInvite);
 
   // Household
   document.getElementById('btn-save-household') .addEventListener('click', saveHousehold);

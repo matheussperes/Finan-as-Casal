@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Finanças do Casal — Convite</title>
+  <link rel="stylesheet" href="globals.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--background);
+      padding: 24px;
+    }
+    .invite-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+      padding: 36px 32px;
+    }
+    .invite-brand {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 28px;
+    }
+    .invite-brand-dot {
+      width: 34px; height: 34px; background: var(--primary);
+      border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    }
+    .invite-brand-name {
+      font-family: var(--font-display); font-size: 1.0625rem;
+      font-weight: 800; color: var(--text-primary);
+    }
+    .invite-title {
+      font-family: var(--font-display); font-size: 1.375rem; font-weight: 800;
+      color: var(--text-primary); margin-bottom: 8px; line-height: 1.3;
+    }
+    .invite-sub {
+      font-size: .9075rem; color: var(--text-muted);
+      line-height: 1.6; margin-bottom: 24px;
+    }
+    .invite-sub strong { color: var(--text-primary); }
+    .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+    .form-label { font-size: .8125rem; font-weight: 600; color: var(--text-secondary); }
+    .form-hint  { font-size: .75rem; color: var(--text-muted); }
+    .invite-error-box {
+      background: #fff1f2; border: 1px solid #fecdd3; color: #9f1239;
+      border-radius: var(--radius-md); padding: 12px 14px;
+      font-size: .8425rem; line-height: 1.5; margin-bottom: 16px; display: none;
+    }
+    .invite-error-box.show { display: block; }
+    .btn-full { width: 100%; justify-content: center; }
+    .btn-loading { position: relative; color: transparent !important; }
+    .btn-loading::after {
+      content: ''; position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%); width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.3); border-top-color: white;
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: translate(-50%,-50%) rotate(360deg); } }
+    .invite-footer-link {
+      margin-top: 18px; text-align: center; font-size: .8125rem; color: var(--text-muted);
+    }
+    .invite-footer-link a { color: var(--primary); font-weight: 600; text-decoration: none; }
+    #state-loading { text-align: center; color: var(--text-muted); font-size: .875rem; padding: 12px 0; }
+    #state-form, #state-invalid, #state-done { display: none; }
+  </style>
+</head>
+<body>
+
+<div class="invite-card">
+  <div class="invite-brand">
+    <div class="invite-brand-dot">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+           fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+        <path d="M2 17l10 5 10-5"/>
+        <path d="M2 12l10 5 10-5"/>
+      </svg>
+    </div>
+    <span class="invite-brand-name">Finanças do Casal</span>
+  </div>
+
+  <!-- Carregando -->
+  <div id="state-loading">Validando seu convite…</div>
+
+  <!-- Convite válido: definir senha -->
+  <div id="state-form">
+    <div class="invite-title">Você foi convidado(a) 💚</div>
+    <p class="invite-sub">
+      <span id="invite-context">Seu cônjuge convidou você</span> para acessar as finanças
+      do casal <strong id="invite-household">—</strong>. Defina uma senha para ativar seu acesso.
+    </p>
+
+    <div class="invite-error-box" id="form-error"></div>
+
+    <div class="form-group">
+      <label class="form-label">Nova senha</label>
+      <input class="input" type="password" id="pwd-new" placeholder="Mínimo 8 caracteres" autocomplete="new-password" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Repetir senha</label>
+      <input class="input" type="password" id="pwd-confirm" placeholder="••••••••" autocomplete="new-password" />
+    </div>
+
+    <button class="btn btn-primary btn-full" id="btn-activate">Ativar meu acesso</button>
+  </div>
+
+  <!-- Convite inválido/expirado -->
+  <div id="state-invalid">
+    <div class="invite-title">Convite inválido ou expirado</div>
+    <p class="invite-sub" id="invalid-msg">
+      Este link de convite não é mais válido. Peça para seu cônjuge reenviar o convite
+      na aba <strong>Cônjuge</strong> das Configurações.
+    </p>
+    <div class="invite-footer-link"><a href="index.html">Ir para o login</a></div>
+  </div>
+
+  <!-- Sucesso -->
+  <div id="state-done">
+    <div class="invite-title">Acesso ativado! 🎉</div>
+    <p class="invite-sub">Sua senha foi definida. Redirecionando para a plataforma…</p>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const SUPABASE_URL  = 'https://vvgrnrvvdggosxkjkxaa.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_XbWPcxUBV-2R2eH720h7kA_v5zCrvoX';
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+function show(stateId) {
+  ['state-loading', 'state-form', 'state-invalid', 'state-done'].forEach(id => {
+    document.getElementById(id).style.display = id === stateId ? 'block' : 'none';
+  });
+}
+
+function showFormError(msg) {
+  const box = document.getElementById('form-error');
+  box.textContent = msg;
+  box.classList.add('show');
+}
+
+/* O supabase-js consome o hash (#access_token…&type=invite) de forma
+   assíncrona ao criar o client — aguarda a sessão aparecer. */
+async function waitSession(timeoutMs = 5000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const { data: { session } } = await _supabase.auth.getSession();
+    if (session) return session;
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return null;
+}
+
+async function init() {
+  // Erro explícito no hash (link expirado/usado)
+  const hash = new URLSearchParams(window.location.hash.slice(1));
+  if (hash.get('error')) {
+    const desc = hash.get('error_description') || '';
+    if (desc) document.getElementById('invalid-msg').textContent =
+      'O link não pôde ser validado (' + desc.replace(/\+/g, ' ') + '). ' +
+      'Peça para seu cônjuge reenviar o convite na aba Cônjuge das Configurações.';
+    show('state-invalid');
+    return;
+  }
+
+  const session = await waitSession();
+  if (!session) { show('state-invalid'); return; }
+
+  // Contexto: nome do casal e de quem convidou (RLS: já sou membro vinculado)
+  const { data: me } = await _supabase
+    .from('members').select('id, name, household_id')
+    .eq('user_id', session.user.id).maybeSingle();
+
+  if (me?.household_id) {
+    const [hhRes, othersRes] = await Promise.all([
+      _supabase.from('households').select('name').eq('id', me.household_id).maybeSingle(),
+      _supabase.from('members').select('name').eq('household_id', me.household_id).neq('id', me.id),
+    ]);
+    document.getElementById('invite-household').textContent = hhRes.data?.name || 'de vocês';
+    const inviter = (othersRes.data || [])[0]?.name;
+    if (inviter) document.getElementById('invite-context').textContent =
+      inviter.split(' ')[0] + ' convidou você';
+  }
+
+  show('state-form');
+  document.getElementById('pwd-new').focus();
+}
+
+async function activate() {
+  const pwd     = document.getElementById('pwd-new').value;
+  const confirm = document.getElementById('pwd-confirm').value;
+  document.getElementById('form-error').classList.remove('show');
+
+  if (pwd.length < 8)   { showFormError('A senha deve ter pelo menos 8 caracteres.'); return; }
+  if (pwd !== confirm)  { showFormError('As senhas não coincidem.'); return; }
+
+  const btn = document.getElementById('btn-activate');
+  btn.classList.add('btn-loading'); btn.disabled = true;
+
+  const { error } = await _supabase.auth.updateUser({ password: pwd });
+
+  btn.classList.remove('btn-loading'); btn.disabled = false;
+  if (error) { showFormError('Erro ao definir a senha: ' + error.message); return; }
+
+  show('state-done');
+  setTimeout(() => { window.location.href = 'lancamentos.html'; }, 1500);
+}
+
+document.getElementById('btn-activate').addEventListener('click', activate);
+document.getElementById('pwd-confirm').addEventListener('keydown', e => {
+  if (e.key === 'Enter') activate();
+});
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
