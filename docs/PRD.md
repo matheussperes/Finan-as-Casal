@@ -396,8 +396,8 @@ testado: R$500k em dez/2040 a 0,5% a.m. (173 meses a partir de jul/2026) ⇒ ~R$
 
 **Onde está o quê:**
 - `supabase/migrations/20260718170000_sprint5_projetos.sql` — `projects.tipo` + `end_date`, migração
-  EPF→projetos, drop de `independence_events`. **Pendente de aplicação** (MCP do Supabase estava
-  desconectado neste sprint) — colar no SQL Editor ou reconectar o MCP.
+  EPF→projetos, drop de `independence_events`. **Aplicada** manualmente no SQL Editor do Supabase
+  em 2026-07-20 (MCP do Supabase ficou indisponível nesta sessão durante o sprint).
 - `js/finance-model.js` — `PROJECT_TIPOS`, `projectKind`, `annualToMonthlyRate`,
   `projectMonthlyContribution`, `projectsToSimulationEvents`, `simulateIndependence`.
 - `tests/finance-model.test.js` — 30 testes no total (21 anteriores + 9 novos).

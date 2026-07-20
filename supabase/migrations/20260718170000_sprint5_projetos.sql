@@ -5,9 +5,9 @@
 --
 -- Depende das migrações dos Sprints 2 e 3 já aplicadas.
 --
--- STATUS: pendente de aplicação — o MCP do Supabase estava desconectado
--- quando este sprint rodou. Aplicar no SQL Editor do Supabase (projeto
--- vvgrnrvvdggosxkjkxaa) ou reconectar o MCP e pedir para aplicar.
+-- STATUS: aplicada manualmente no SQL Editor do Supabase (projeto
+-- vvgrnrvvdggosxkjkxaa) em 2026-07-20, pois o MCP do Supabase ficou
+-- indisponível nesta sessão durante o sprint.
 --
 -- Schema real de `projects` e `independence_events` confirmado por
 -- introspecção direta do banco durante o Sprint 2 (via MCP):
