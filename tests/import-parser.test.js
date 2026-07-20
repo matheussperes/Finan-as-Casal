@@ -126,6 +126,45 @@ test('parseCSV: linhas quebradas viram erro, não lançamento', () => {
   assert.equal(r.errors.length, 2);
 });
 
+/* ── estabelecimento ── */
+test('parseOFX expõe establishment = payee (NAME)', () => {
+  const r = P.parseOFX(fixture('extrato-conta.ofx'));
+  const uber = r.transactions[0];
+  assert.equal(uber.establishment, 'UBER *TRIP 0702');
+  const aluguel = r.transactions[1];
+  assert.equal(aluguel.establishment, 'ALUGUEL APARTAMENTO'); // NAME, sem o MEMO
+});
+
+test('parseCSV usa a coluna Estabelecimento como establishment e como fallback de descrição', () => {
+  const r = P.parseCSV(fixture('fatura-cartao.csv'));
+  assert.equal(r.transactions[0].establishment, 'IFOOD *RESTAURANTE BOM');
+  assert.equal(r.transactions[0].description, 'IFOOD *RESTAURANTE BOM');
+});
+
+test('parseCSV com colunas separadas de descrição e estabelecimento', () => {
+  const csv = 'Data;Historico;Estabelecimento;Valor\n05/07/2026;Compra no debito;PADARIA STELLA;-40,00\n';
+  const r = P.parseCSV(csv);
+  assert.equal(r.transactions[0].description, 'Compra no debito');
+  assert.equal(r.transactions[0].establishment, 'PADARIA STELLA');
+});
+
+/* ── detecção do sinal das compras no cartão ── */
+test('detectCardPurchaseSign: compras positivas dominam → +1', () => {
+  const r = P.parseCSV(fixture('fatura-cartao.csv'));
+  assert.equal(P.detectCardPurchaseSign(r.transactions), 1);
+});
+
+test('detectCardPurchaseSign: compras negativas dominam (Nubank OFX) → -1', () => {
+  const r = P.parseOFX(fixture('fatura-cartao-negativo.ofx'));
+  assert.equal(r.source, 'card');
+  assert.equal(P.detectCardPurchaseSign(r.transactions), -1);
+});
+
+test('detectCardPurchaseSign: empate e vazio → +1 (default)', () => {
+  assert.equal(P.detectCardPurchaseSign([{ amount: 10 }, { amount: -10 }]), 1);
+  assert.equal(P.detectCardPurchaseSign([]), 1);
+});
+
 /* ── parseFile: dispatcher ── */
 test('parseFile roteia por extensão e conteúdo', () => {
   assert.equal(P.parseFile('extrato.ofx', fixture('extrato-conta.ofx')).kind, 'ofx');
