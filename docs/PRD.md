@@ -406,3 +406,49 @@ testado: R$500k em dez/2040 a 0,5% a.m. (173 meses a partir de jul/2026) ⇒ ~R$
 - `projetos.html` — seletor de tipo D3 com campos condicionais, badge derivado, PMT pela taxa do
   pool, KPI/nota de recorte do aporte.
 - `futuro.html` — UI de EPF removida, simulação via projetos, card agregado "Projetos no plano".
+
+---
+
+## 12. Sprint 7 — Notas de implementação (Importação OFX/CSV, LAN-05)
+
+Finaliza o produto: upload de extrato/fatura em OFX e CSV, com categorização que aprende do
+histórico e uma fila para os casos incertos.
+
+**Parser puro (`js/import-parser.js`)** — sem I/O, testável isolado:
+- **OFX** (SGML 1.x e XML 2.x): lê `<STMTTRN>`, detecta se é extrato de conta (`BANKMSGSRSV1`) ou
+  fatura de cartão (`CREDITCARDMSGSRSV1`), concatena `NAME`+`MEMO`, usa `FITID` como id estável.
+- **CSV**: detecta o separador (`;`, `,`, tab), reconhece cabeçalho por aliases pt-BR/en, ou infere
+  colunas pelo conteúdo quando não há cabeçalho; respeita aspas (vírgula dentro do campo).
+- **Datas**: `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, 2 ou 4 dígitos de ano. A ordem dia/mês é
+  resolvida olhando o arquivo inteiro (se algum componente passa de 12, desambigua; senão, DD/MM).
+- **Valores**: `1.234,56`, `1234.56`, `1,234.56`, `R$ …`, `(123,45)` negativo, colunas separadas de
+  débito/crédito. Sinal decide entrada/saída (em conta) ou compra/pagamento (em cartão).
+- **Categorização aprendida**: `buildCategoryModel` monta um modelo a partir do histórico já
+  categorizado (ignora "Classificação neutra" e itens ainda em revisão); `suggestCategory` devolve a
+  categoria **sem perguntar** quando a origem é consistente (uma única classe, ou ≥80% das vezes), e
+  manda para a fila quando é desconhecida ou conflitante. Chave por descrição normalizada
+  (minúsculas, sem acento/dígitos/pontuação) — "UBER *TRIP 1234" e "UBER *TRIP 5678" são a mesma origem.
+
+**Dedup (`fingerprint`)**: usa `FITID`/Identifier quando existe; senão data+valor+descrição
+normalizada, escopado por conta/cartão. Duplicatas idênticas no mesmo arquivo são desambiguadas de
+forma estável (mesmo arquivo reimportado gera as mesmas fingerprints). No banco, um índice único
+parcial `(household_id, import_fingerprint)` é o backstop à prova de corrida.
+
+**Banco** (`supabase/migrations/20260720140000_sprint7_import_ofx_csv.sql`, **aplicada**):
+`transactions.import_fingerprint`, `needs_category_review`, `source` + índice único parcial de dedup
+e índice da fila de revisão. A RLS existente (`transactions_all`, comando ALL por household) já cobre
+as colunas novas — nada a mudar.
+
+**UI (`lancamentos.html`)**: botão **Importar** → modal com destino (conta/cartão) + upload;
+preview com valor/direção e categoria editável (sugestões confiáveis já preenchidas, incertas
+destacadas); resumo de novos/duplicados/sem-categoria. Itens sem categoria entram na fila
+**"Confirmar categoria"** (banner + modal) que o usuário resolve depois — e a resolução vira
+aprendizado para as próximas importações. Import de cartão gera as compras nas faturas do período
+(`getOrCreateInvoices`); pagamentos/estornos do extrato de cartão não são importados (a tela de
+Faturas cuida disso).
+
+**Testes**: `tests/import-parser.test.js` (20 casos: valores, datas, OFX conta/cartão, CSV com/sem
+cabeçalho, débito/crédito, MM/DD vs DD/MM, dedup, categorização). `tests/import-e2e.mjs` (Chromium
+headless + stub do Supabase em memória, 26 checagens): importa o OFX de conta, prova a categorização
+aprendida, reimporta e confirma o dedup, resolve a fila, e importa o CSV de cartão gerando faturas.
+Fixtures em `tests/fixtures/`.

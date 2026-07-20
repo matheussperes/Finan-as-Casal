@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="globals.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/finance-model.js"></script>
+  <script src="js/import-parser.js"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <style>
     .page-header {
@@ -473,6 +474,67 @@
     .invoice-row .inv-period { font-weight: 600; font-size: .8438rem; color: var(--text-primary); min-width: 130px; }
     .invoice-row .inv-info { flex: 1; font-size: .75rem; color: var(--text-muted); }
     tbody tr.tx-ignored td { opacity: .55; }
+
+    /* ── Importação OFX/CSV (LAN-05) ── */
+    .review-banner {
+      display: flex; align-items: center; gap: 12px;
+      background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius-md);
+      padding: 12px 16px; margin-bottom: 16px;
+    }
+    .review-banner-icon { color: #b45309; flex-shrink: 0; display: flex; }
+    .review-banner-text { flex: 1; font-size: .8438rem; color: #92400e; }
+    .review-banner-text strong { font-weight: 700; }
+
+    .import-dest-toggle { display: flex; gap: 8px; }
+    .import-dest-btn {
+      flex: 1; padding: 9px 12px; border: 1.5px solid var(--border);
+      border-radius: var(--radius-md); background: var(--surface);
+      font-size: .8438rem; font-weight: 600; color: var(--text-secondary); cursor: pointer;
+      transition: all .15s;
+    }
+    .import-dest-btn:hover { border-color: var(--emerald-300); }
+    .import-dest-btn.active { border-color: var(--primary); background: var(--primary-light); color: var(--primary); }
+
+    .import-dropzone {
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+      padding: 28px 16px; border: 2px dashed var(--border); border-radius: var(--radius-md);
+      color: var(--text-muted); cursor: pointer; transition: all .15s; text-align: center;
+      font-size: .8438rem;
+    }
+    .import-dropzone:hover, .import-dropzone.dragover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+    .import-dropzone.has-file { border-style: solid; border-color: var(--primary); color: var(--text-primary); }
+
+    .import-summary {
+      display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 14px;
+      font-size: .8125rem; color: var(--text-secondary);
+    }
+    .import-summary .imp-stat { display: inline-flex; align-items: center; gap: 6px; }
+    .import-summary .imp-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .imp-dot.new { background: var(--primary); }
+    .imp-dot.dup { background: var(--text-muted); }
+    .imp-dot.ask { background: #d97706; }
+
+    .import-preview-wrap { max-height: 46vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); }
+    .import-preview-table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+    .import-preview-table thead th {
+      position: sticky; top: 0; background: var(--surface-alt); z-index: 1;
+      text-align: left; padding: 9px 12px; font-weight: 600; color: var(--text-muted);
+      font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border);
+    }
+    .import-preview-table tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .import-preview-table tbody tr:last-child td { border-bottom: none; }
+    .import-preview-table tr.imp-dup td { opacity: .5; }
+    .import-preview-table tr.imp-ask { background: #fffbeb; }
+    .imp-val-in  { color: var(--color-income); font-weight: 600; text-align: right; white-space: nowrap; }
+    .imp-val-out { color: var(--color-expense); font-weight: 600; text-align: right; white-space: nowrap; }
+    .imp-desc { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .imp-cat-select { width: 100%; padding: 5px 8px; font-size: .8125rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+    .imp-cat-select.needs-pick { border-color: #d97706; background: #fffbeb; }
+    .imp-badge {
+      display: inline-block; font-size: .625rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .03em; padding: 2px 6px; border-radius: var(--radius-full); margin-left: 6px;
+    }
+    .imp-badge.dup { background: var(--surface-alt); color: var(--text-muted); }
   </style>
 </head>
 <body>
@@ -616,6 +678,15 @@
             </svg>
           </button>
         </div>
+        <button class="btn btn-secondary" id="btn-import">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Importar
+        </button>
         <button class="btn btn-secondary" id="btn-invoices">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -660,6 +731,21 @@
       </div>
 
       <div id="invoice-alerts" style="display:none"></div>
+
+      <!-- Fila "Confirmar categoria" (LAN-05): itens importados sem categoria confiável -->
+      <div id="review-banner" class="review-banner" style="display:none">
+        <div class="review-banner-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <div class="review-banner-text">
+          <strong id="review-banner-count">0 lançamentos</strong> importados precisam de categoria.
+        </div>
+        <button class="btn btn-primary btn-sm" id="btn-open-review">Confirmar categorias</button>
+      </div>
 
       <div class="tabs-bar" id="tabs-bar">
         <!-- Preenchido dinamicamente via JS (ordem conforme quem logou) -->
@@ -1101,6 +1187,119 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" id="modal-pay-cancel">Cancelar</button>
       <button class="btn btn-primary" id="modal-pay-confirm">Confirmar pagamento</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Modal IMPORTAÇÃO OFX/CSV (LAN-05) ═══ -->
+<div class="modal-overlay" id="modal-import">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-import-title">Importar extrato / fatura</span>
+      <button class="btn-ghost btn-icon modal-close" id="modal-import-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Etapa 1: upload + destino -->
+    <div id="import-step-upload">
+      <div class="modal-form-grid">
+        <div class="form-group full">
+          <label class="form-label">Destino dos lançamentos</label>
+          <div class="import-dest-toggle">
+            <button type="button" class="import-dest-btn active" data-dest="account">Conta</button>
+            <button type="button" class="import-dest-btn" data-dest="card">Cartão de crédito</button>
+          </div>
+        </div>
+        <div class="form-group full" id="import-account-group">
+          <label class="form-label">Conta</label>
+          <select class="input select" id="import-account"></select>
+        </div>
+        <div class="form-group full" id="import-card-group" style="display:none">
+          <label class="form-label">Cartão</label>
+          <select class="input select" id="import-card"></select>
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Arquivo (.ofx ou .csv)</label>
+          <label class="import-dropzone" id="import-dropzone">
+            <input type="file" id="import-file" accept=".ofx,.csv,.txt" style="display:none" />
+            <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span id="import-dropzone-label">Clique para escolher o arquivo</span>
+          </label>
+          <span class="form-hint" style="color:var(--text-muted);font-size:.75rem">
+            OFX ou CSV de conta e de cartão. Datas e separadores variados são reconhecidos automaticamente.
+          </span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="modal-import-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="btn-import-parse" disabled>Ler arquivo</button>
+      </div>
+    </div>
+
+    <!-- Etapa 2: preview + categorização -->
+    <div id="import-step-preview" style="display:none">
+      <div class="import-summary" id="import-summary"></div>
+      <div class="import-preview-wrap">
+        <table class="import-preview-table">
+          <thead>
+            <tr>
+              <th style="width:78px">Data</th>
+              <th>Descrição</th>
+              <th style="width:110px;text-align:right">Valor</th>
+              <th style="width:180px">Categoria</th>
+            </tr>
+          </thead>
+          <tbody id="import-preview-body"></tbody>
+        </table>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-import-back">Voltar</button>
+        <button class="btn btn-primary" id="btn-import-confirm">Importar lançamentos</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Modal CONFIRMAR CATEGORIA (fila LAN-05) ═══ -->
+<div class="modal-overlay" id="modal-review">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">Confirmar categoria</span>
+      <button class="btn-ghost btn-icon modal-close" id="modal-review-close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <p style="font-size:.8438rem;color:var(--text-secondary);margin-bottom:14px">
+      Estes lançamentos foram importados mas não puderam ser categorizados com segurança.
+      Escolha a categoria de cada um — da próxima vez, a mesma origem virá preenchida sozinha.
+    </p>
+    <div class="import-preview-wrap" style="max-height:52vh">
+      <table class="import-preview-table">
+        <thead>
+          <tr>
+            <th style="width:78px">Data</th>
+            <th>Descrição</th>
+            <th style="width:110px;text-align:right">Valor</th>
+            <th style="width:180px">Categoria</th>
+          </tr>
+        </thead>
+        <tbody id="review-body"></tbody>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modal-review-cancel">Fechar</button>
+      <button class="btn btn-primary" id="btn-review-save">Salvar categorias</button>
     </div>
   </div>
 </div>
@@ -1756,6 +1955,367 @@
 
     allTransactions = data || [];
     renderActiveTab();
+    refreshReviewBanner();
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     IMPORTAÇÃO OFX/CSV (LAN-05)
+  ══════════════════════════════════════════════════════════════════ */
+  let importDest = 'account';      // 'account' | 'card'
+  let importParsed = null;         // resultado do parser
+  let importRows = [];             // linhas normalizadas para preview/insert
+  let categoryModel = null;        // modelo aprendido do histórico
+
+  /* Categorias válidas para atribuição manual (exclui as internas de investimento) */
+  function assignableCategories() {
+    return categories.filter(c =>
+      c.name !== FinanceModel.INVESTMENT_CATEGORY_NAME &&
+      c.name !== FinanceModel.RESERVE_CATEGORY_NAME);
+  }
+
+  function catOptionsHtml(selected) {
+    const blank = `<option value="">— escolher —</option>`;
+    return blank + assignableCategories()
+      .map(c => `<option value="${escHtml(c.name)}"${c.name === selected ? ' selected' : ''}>${escHtml(c.name)}</option>`)
+      .join('');
+  }
+
+  /* Constrói o modelo de categorização a partir de TODO o histórico do casal
+     (não só o mês atual) — origem já categorizada antes vem preenchida. */
+  async function buildImportCategoryModel() {
+    const { data } = await _supabase
+      .from('transactions')
+      .select('description, classification, needs_category_review')
+      .eq('household_id', householdId)
+      .order('date', { ascending: false })
+      .limit(4000);
+    categoryModel = ImportParser.buildCategoryModel(data || []);
+  }
+
+  function openImportModal() {
+    if (allAccounts.length === 0) {
+      toast('Cadastre uma conta antes de importar.', 'error');
+      return;
+    }
+    importParsed = null; importRows = [];
+    document.getElementById('import-step-upload').style.display = '';
+    document.getElementById('import-step-preview').style.display = 'none';
+    document.getElementById('import-file').value = '';
+    document.getElementById('import-dropzone-label').textContent = 'Clique para escolher o arquivo';
+    document.getElementById('import-dropzone').classList.remove('has-file');
+    document.getElementById('btn-import-parse').disabled = true;
+    setImportDest('account');
+
+    // Selects de destino
+    document.getElementById('import-account').innerHTML = allAccounts
+      .map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+    document.getElementById('import-card').innerHTML = allCreditCards.length
+      ? allCreditCards.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('')
+      : '<option value="">Nenhum cartão cadastrado</option>';
+
+    openModal('modal-import');
+  }
+
+  function setImportDest(dest) {
+    importDest = dest;
+    document.querySelectorAll('.import-dest-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.dest === dest));
+    document.getElementById('import-account-group').style.display = dest === 'account' ? '' : 'none';
+    document.getElementById('import-card-group').style.display    = dest === 'card' ? '' : 'none';
+  }
+
+  function importDestId() {
+    return importDest === 'card'
+      ? document.getElementById('import-card').value
+      : document.getElementById('import-account').value;
+  }
+
+  async function handleImportFile(file) {
+    if (!file) return;
+    const buf = await file.arrayBuffer();
+    const text = ImportParser.decodeBuffer(buf);
+    importParsed = ImportParser.parseFile(file.name, text);
+    document.getElementById('import-dropzone-label').textContent = file.name;
+    document.getElementById('import-dropzone').classList.add('has-file');
+    document.getElementById('btn-import-parse').disabled = importParsed.transactions.length === 0;
+
+    // Dica de destino conforme o conteúdo do OFX
+    if (importParsed.source === 'card' && importDest !== 'card' && allCreditCards.length) setImportDest('card');
+    if (importParsed.source === 'bank' && importDest !== 'account') setImportDest('account');
+
+    if (importParsed.transactions.length === 0) {
+      toast('Nenhum lançamento reconhecido no arquivo. ' + (importParsed.errors[0] || ''), 'error');
+    }
+  }
+
+  async function buildImportPreview() {
+    const destId = importDestId();
+    if (!destId) { toast('Selecione a conta ou o cartão de destino.', 'error'); return; }
+    if (importDest === 'card' && !allCreditCards.length) { toast('Cadastre um cartão primeiro.', 'error'); return; }
+
+    const parseBtn = document.getElementById('btn-import-parse');
+    parseBtn.classList.add('btn-loading'); parseBtn.disabled = true;
+
+    await buildImportCategoryModel();
+
+    // Fingerprints do arquivo (com desambiguação de duplicatas internas)
+    const seen = new Map();
+    const raw = importParsed.transactions.map(tx => ({
+      ...tx,
+      fp: ImportParser.fingerprint(tx, destId, seen),
+    }));
+
+    // Dedup contra o banco: busca as fingerprints que já existem
+    const fps = raw.map(r => r.fp);
+    const existing = new Set();
+    for (let i = 0; i < fps.length; i += 200) {
+      const chunk = fps.slice(i, i + 200);
+      const { data } = await _supabase
+        .from('transactions')
+        .select('import_fingerprint')
+        .eq('household_id', householdId)
+        .in('import_fingerprint', chunk);
+      (data || []).forEach(r => existing.add(r.import_fingerprint));
+    }
+
+    importRows = raw.map(r => {
+      const isDup = existing.has(r.fp);
+      // Direção conforme o destino: conta usa o sinal; cartão trata positivo=compra
+      const isExpense = importDest === 'card' ? r.amount > 0 : r.amount < 0;
+      const suggestion = ImportParser.suggestCategory(categoryModel, r.description);
+      let classification, needsReview;
+      if (suggestion.confident && suggestion.classification) {
+        classification = suggestion.classification; needsReview = false;
+      } else {
+        classification = suggestion.classification || ''; needsReview = true;
+      }
+      return {
+        date: r.date,
+        description: r.description,
+        amount: Math.abs(r.amount),
+        direction: isExpense ? 'expense' : 'income',
+        fingerprint: r.fp,
+        rawAmount: r.amount,
+        isDup,
+        classification,
+        needsReview,
+      };
+    });
+
+    parseBtn.classList.remove('btn-loading'); parseBtn.disabled = false;
+    renderImportPreview();
+    document.getElementById('import-step-upload').style.display = 'none';
+    document.getElementById('import-step-preview').style.display = '';
+  }
+
+  function renderImportPreview() {
+    const newRows = importRows.filter(r => !r.isDup);
+    const dupCount = importRows.length - newRows.length;
+    const askCount = newRows.filter(r => r.needsReview).length;
+    const cardPayIgnored = importDest === 'card'
+      ? importRows.filter(r => !r.isDup && r.direction === 'income').length : 0;
+
+    document.getElementById('import-summary').innerHTML = `
+      <span class="imp-stat"><span class="imp-dot new"></span>${newRows.length} novo(s)</span>
+      <span class="imp-stat"><span class="imp-dot dup"></span>${dupCount} duplicado(s) ignorado(s)</span>
+      <span class="imp-stat"><span class="imp-dot ask"></span>${askCount} sem categoria (irão para a fila)</span>
+      ${cardPayIgnored ? `<span class="imp-stat" style="color:var(--text-muted)">${cardPayIgnored} pagamento(s)/estorno(s) do cartão não serão importados</span>` : ''}
+    `;
+
+    const body = document.getElementById('import-preview-body');
+    body.innerHTML = importRows.map((r, i) => {
+      const cls = [r.isDup ? 'imp-dup' : '', (!r.isDup && r.needsReview) ? 'imp-ask' : ''].filter(Boolean).join(' ');
+      const valCls = r.direction === 'expense' ? 'imp-val-out' : 'imp-val-in';
+      const sign = r.direction === 'expense' ? '−' : '+';
+      const catCell = r.isDup
+        ? '<span style="color:var(--text-muted)">—</span>'
+        : `<select class="imp-cat-select ${r.needsReview ? 'needs-pick' : ''}" data-i="${i}">${catOptionsHtml(r.classification)}</select>`;
+      return `
+        <tr class="${cls}">
+          <td>${fmtDate(r.date)}</td>
+          <td class="imp-desc" title="${escHtml(r.description)}">${escHtml(r.description)}${r.isDup ? '<span class="imp-badge dup">duplicado</span>' : ''}</td>
+          <td class="${valCls}">${sign} ${fmtBRL(r.amount)}</td>
+          <td>${catCell}</td>
+        </tr>`;
+    }).join('');
+
+    body.querySelectorAll('.imp-cat-select').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const i = +sel.dataset.i;
+        importRows[i].classification = sel.value;
+        importRows[i].needsReview = !sel.value;
+        sel.classList.toggle('needs-pick', !sel.value);
+      });
+    });
+
+    document.getElementById('btn-import-confirm').disabled = newRows.length === 0;
+  }
+
+  async function confirmImport() {
+    const destId = importDestId();
+    let toInsert = importRows.filter(r => !r.isDup);
+    // Cartão: só compras (positivo) — pagamentos/estornos são tratados na tela de Faturas
+    if (importDest === 'card') toInsert = toInsert.filter(r => r.direction === 'expense');
+
+    if (toInsert.length === 0) { toast('Nada novo para importar.', 'info'); return; }
+
+    const btn = document.getElementById('btn-import-confirm');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+
+    try {
+      if (importDest === 'account') {
+        await importIntoAccount(destId, toInsert);
+      } else {
+        await importIntoCard(destId, toInsert);
+      }
+      const askCount = toInsert.filter(r => r.needsReview).length;
+      closeModal('modal-import');
+      toast(`${toInsert.length} lançamento(s) importado(s)` +
+        (askCount ? ` — ${askCount} aguardam categoria.` : '.'), 'success');
+      await loadCardFinanceData();
+      await refreshInvoiceStatuses();
+      renderInvoiceAlerts();
+      await loadTransactions();
+    } catch (e) {
+      toast('Erro ao importar: ' + e.message, 'error');
+    } finally {
+      btn.classList.remove('btn-loading'); btn.disabled = false;
+    }
+  }
+
+  async function importIntoAccount(accountId, rows) {
+    const source = importParsed.kind === 'ofx' ? 'import_ofx' : 'import_csv';
+    const memberId = deriveMemberIdFromAccount(accountId);
+    const payload = rows.map(r => ({
+      household_id:      householdId,
+      account_id:        accountId,
+      member_id:         memberId,
+      direction:         r.direction,
+      amount:            r.amount,
+      date:              r.date,
+      description:       r.description,
+      classification:    r.needsReview ? ImportParser.NEUTRAL_CLASSIFICATION : r.classification,
+      payment_method:    r.direction === 'income' ? 'transferencia' : 'debito',
+      source,
+      import_fingerprint: r.fingerprint,
+      needs_category_review: r.needsReview,
+    }));
+    await insertDedup(payload);
+  }
+
+  async function importIntoCard(cardId, rows) {
+    const card = allCreditCards.find(c => c.id === cardId);
+    if (!card) throw new Error('Cartão não encontrado.');
+    const source = importParsed.kind === 'ofx' ? 'import_ofx' : 'import_csv';
+
+    // Agrupa por período de fatura e garante as faturas de uma vez
+    const periods = [...new Set(rows.map(r => computeInvoicePeriod(card.closing_day, r.date)))];
+    const invoices = await getOrCreateInvoices(card, periods);
+    const invByPeriod = new Map(periods.map((p, i) => [p, invoices[i]]));
+
+    const payload = rows.map(r => {
+      const period = computeInvoicePeriod(card.closing_day, r.date);
+      const inv = invByPeriod.get(period);
+      return {
+        household_id:      householdId,
+        account_id:        card.account_id,
+        credit_card_id:    card.id,
+        invoice_id:        inv ? inv.id : null,
+        direction:         'expense',
+        amount:            r.amount,
+        date:              r.date,
+        description:       r.description,
+        classification:    r.needsReview ? ImportParser.NEUTRAL_CLASSIFICATION : r.classification,
+        payment_method:    'credito',
+        source,
+        import_fingerprint: r.fingerprint,
+        needs_category_review: r.needsReview,
+      };
+    });
+    await insertDedup(payload);
+  }
+
+  /* Insere em lote; se o índice único pegar duplicatas (23505), reinsere
+     linha a linha ignorando as que já existem — dedup à prova de corrida. */
+  async function insertDedup(rows) {
+    const { error } = await _supabase.from('transactions').insert(rows);
+    if (!error) return;
+    if (error.code !== '23505') throw new Error(error.message);
+    for (const row of rows) {
+      const { error: e2 } = await _supabase.from('transactions').insert(row);
+      if (e2 && e2.code !== '23505') throw new Error(e2.message);
+    }
+  }
+
+  /* ── Fila "Confirmar categoria" ── */
+  async function refreshReviewBanner() {
+    const { count } = await _supabase
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('household_id', householdId)
+      .eq('needs_category_review', true);
+    const banner = document.getElementById('review-banner');
+    if (count && count > 0) {
+      document.getElementById('review-banner-count').textContent =
+        `${count} lançamento${count > 1 ? 's' : ''}`;
+      banner.style.display = 'flex';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  let reviewItems = [];
+  async function openReviewModal() {
+    const { data, error } = await _supabase
+      .from('transactions')
+      .select('*')
+      .eq('household_id', householdId)
+      .eq('needs_category_review', true)
+      .order('date', { ascending: false });
+    if (error) { toast('Erro ao carregar a fila: ' + error.message, 'error'); return; }
+    reviewItems = data || [];
+    const body = document.getElementById('review-body');
+    body.innerHTML = reviewItems.map((t, i) => {
+      const valCls = t.direction === 'expense' ? 'imp-val-out' : 'imp-val-in';
+      const sign = t.direction === 'expense' ? '−' : '+';
+      return `
+        <tr>
+          <td>${fmtDate(t.date)}</td>
+          <td class="imp-desc" title="${escHtml(t.description)}">${escHtml(t.description)}</td>
+          <td class="${valCls}">${sign} ${fmtBRL(t.amount)}</td>
+          <td><select class="imp-cat-select needs-pick" data-i="${i}">${catOptionsHtml('')}</select></td>
+        </tr>`;
+    }).join('');
+    body.querySelectorAll('.imp-cat-select').forEach(sel => {
+      sel.addEventListener('change', () => sel.classList.toggle('needs-pick', !sel.value));
+    });
+    openModal('modal-review');
+  }
+
+  async function saveReview() {
+    const selects = document.querySelectorAll('#review-body .imp-cat-select');
+    const updates = [];
+    selects.forEach(sel => {
+      const val = sel.value;
+      if (val) updates.push({ id: reviewItems[+sel.dataset.i].id, classification: val });
+    });
+    if (updates.length === 0) { toast('Escolha ao menos uma categoria.', 'info'); return; }
+
+    const btn = document.getElementById('btn-review-save');
+    btn.classList.add('btn-loading'); btn.disabled = true;
+    let failed = 0;
+    for (const u of updates) {
+      const { error } = await _supabase.from('transactions')
+        .update({ classification: u.classification, needs_category_review: false })
+        .eq('id', u.id);
+      if (error) failed++;
+    }
+    btn.classList.remove('btn-loading'); btn.disabled = false;
+
+    if (failed) { toast(`${failed} não puderam ser salvos.`, 'error'); return; }
+    closeModal('modal-review');
+    toast(`${updates.length} categoria(s) confirmada(s)!`, 'success');
+    await loadTransactions();
   }
 
   /* ── ABAS (Meus / Conjunto / Do parceiro) ── */
@@ -2674,6 +3234,30 @@
 
   document.getElementById('btn-new-income').addEventListener('click',   () => openNewModal('income'));
   document.getElementById('btn-new-expense').addEventListener('click',  () => openNewModal('expense'));
+
+  /* ── Importação OFX/CSV (LAN-05) ── */
+  document.getElementById('btn-import').addEventListener('click', openImportModal);
+  document.getElementById('modal-import-close').addEventListener('click',  () => closeModal('modal-import'));
+  document.getElementById('modal-import-cancel').addEventListener('click', () => closeModal('modal-import'));
+  document.querySelectorAll('.import-dest-btn').forEach(b =>
+    b.addEventListener('click', () => setImportDest(b.dataset.dest)));
+  document.getElementById('import-file').addEventListener('change', e => handleImportFile(e.target.files[0]));
+  const dz = document.getElementById('import-dropzone');
+  ['dragover', 'dragenter'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('dragover'); }));
+  ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('dragover'); }));
+  dz.addEventListener('drop', e => { if (e.dataTransfer.files[0]) handleImportFile(e.dataTransfer.files[0]); });
+  document.getElementById('btn-import-parse').addEventListener('click', buildImportPreview);
+  document.getElementById('btn-import-back').addEventListener('click', () => {
+    document.getElementById('import-step-preview').style.display = 'none';
+    document.getElementById('import-step-upload').style.display = '';
+  });
+  document.getElementById('btn-import-confirm').addEventListener('click', confirmImport);
+
+  /* ── Fila Confirmar categoria ── */
+  document.getElementById('btn-open-review').addEventListener('click', openReviewModal);
+  document.getElementById('modal-review-close').addEventListener('click',  () => closeModal('modal-review'));
+  document.getElementById('modal-review-cancel').addEventListener('click', () => closeModal('modal-review'));
+  document.getElementById('btn-review-save').addEventListener('click', saveReview);
   document.getElementById('btn-empty-income').addEventListener('click', () => openNewModal('income'));
   document.getElementById('btn-empty-expense').addEventListener('click', () => openNewModal('expense'));
   document.getElementById('modal-tx-close').addEventListener('click',    () => closeModal('modal-tx'));
