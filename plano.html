@@ -110,6 +110,22 @@
       gap: 16px;
       margin-bottom: 28px;
     }
+    .kpi-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .kpi-card-v2.real::before { background: var(--color-warning); }
+    .status-pill {
+      display: inline-block; font-size: .6875rem; font-weight: 700;
+      padding: 2px 8px; border-radius: var(--radius-full);
+    }
+    .status-pill.ok   { background: #ecfdf5; color: #065f46; }
+    .status-pill.warn { background: #fffbeb; color: #92400e; }
+    .status-pill.over { background: #fff1f2; color: #9f1239; }
+    @media (max-width: 900px) { .kpi-grid-4 { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 520px) { .kpi-grid-4 { grid-template-columns: 1fr; } }
     .kpi-card-v2 {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -726,7 +742,7 @@
       </div>
 
       <!-- KPIs -->
-      <div class="kpi-grid-3" id="kpi-grid">
+      <div class="kpi-grid-4" id="kpi-grid">
         <!-- Skeleton -->
         <div class="kpi-card-v2 income">
           <div class="kpi-icon-wrap">
@@ -749,6 +765,17 @@
           <div class="kpi-label-v2">Gastos Planejados</div>
           <div class="kpi-value-v2" id="kpi-planned">—</div>
           <div class="kpi-sub" id="kpi-planned-sub">Carregando…</div>
+        </div>
+        <div class="kpi-card-v2 real">
+          <div class="kpi-icon-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>
+            </svg>
+          </div>
+          <div class="kpi-label-v2">Gasto Real do Mês</div>
+          <div class="kpi-value-v2" id="kpi-real">—</div>
+          <div class="kpi-sub" id="kpi-real-sub">Carregando…</div>
         </div>
         <div class="kpi-card-v2 surplus">
           <div class="kpi-icon-wrap">
@@ -920,6 +947,15 @@
         <input type="checkbox" id="cat-essencial" />
         Despesa essencial (entra no cálculo da reserva de emergência)
       </label>
+      <div class="form-group" id="subcat-manager" style="display:none">
+        <label class="form-label">Subcategorias</label>
+        <div id="subcat-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+        <div style="display:flex;gap:8px">
+          <input type="text" class="input" id="subcat-new" placeholder="Nova subcategoria" maxlength="60" style="flex:1" />
+          <button type="button" class="btn btn-secondary" id="btn-add-subcat">Adicionar</button>
+        </div>
+        <span class="form-hint" style="font-size:.75rem;color:var(--text-muted)">Todo lançamento exige categoria e subcategoria. Cada categoria começa com "Geral".</span>
+      </div>
     </div>
     <div style="display:flex;gap:10px;margin-top:24px">
       <button class="btn btn-secondary btn-full" id="modal-category-cancel">Cancelar</button>
@@ -1180,8 +1216,9 @@
   function renderCategories() {
     const list = document.getElementById('cat-list');
 
-    // Categorias a mostrar: exclui Renda e categorias internas de bookkeeping
-    const cats = categories.filter(c => !HIDDEN_FROM_BUDGET_LIST.includes(c.name));
+    // Categorias a mostrar: só as de topo (subcategorias não entram no orçamento),
+    // excluindo Renda e categorias internas de bookkeeping
+    const cats = categories.filter(c => !c.parent_id && !HIDDEN_FROM_BUDGET_LIST.includes(c.name));
 
     if (cats.length === 0) {
       list.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:.875rem">
@@ -1210,7 +1247,9 @@
               <strong>${fmtBRL(realized)}</strong>
               <span class="sep">de</span>
               <span>${limit > 0 ? fmtBRL(limit) : 'sem meta'}</span>
-              ${over ? '<span style="color:var(--color-expense);font-weight:600;margin-left:4px">· ultrapassou!</span>' : ''}
+              ${limit > 0 ? (over
+                ? `<span style="color:var(--color-expense);font-weight:600;margin-left:4px">· ${fmtBRL(realized - limit)} acima</span>`
+                : `<span style="color:var(--text-muted);margin-left:4px">· faltam ${fmtBRL(limit - realized)}</span>`) : ''}
             </div>
             <div class="progress-bar-sm">
               <div class="progress-fill-sm ${fillCls}" style="width:${pct}%"></div>
@@ -1372,6 +1411,7 @@
 
     document.getElementById('kpi-income').textContent  = fmtBRL(monthlyIncome);
     document.getElementById('kpi-planned').textContent = fmtBRL(totalPlanned);
+    document.getElementById('kpi-real').textContent    = fmtBRL(totalRealized);
     document.getElementById('kpi-surplus').textContent = fmtBRL(surplus);
 
     const pctRealized = totalPlanned > 0
@@ -1384,6 +1424,26 @@
     document.getElementById('kpi-planned-sub').innerHTML = totalPlanned > 0
       ? `<span>${pctRealized}% realizado (${fmtBRL(totalRealized)})</span>`
       : `<span>Nenhuma meta definida ainda</span>`;
+
+    /* Gasto real vs planejado — status "como estou indo" (Ajuste 4) */
+    const realEl = document.getElementById('kpi-real');
+    const realSub = document.getElementById('kpi-real-sub');
+    if (totalPlanned <= 0) {
+      realEl.style.color = 'var(--text-primary)';
+      realSub.innerHTML = `<span>Defina metas para acompanhar o status</span>`;
+    } else {
+      const consumed = (totalRealized / totalPlanned) * 100;
+      if (totalRealized > totalPlanned) {
+        realEl.style.color = 'var(--color-expense)';
+        realSub.innerHTML = `<span class="status-pill over">Estourou</span> <span>${consumed.toFixed(0)}% do planejado · ${fmtBRL(totalRealized - totalPlanned)} acima</span>`;
+      } else if (consumed >= 80) {
+        realEl.style.color = 'var(--color-warning)';
+        realSub.innerHTML = `<span class="status-pill warn">Perto do limite</span> <span>${consumed.toFixed(0)}% · faltam ${fmtBRL(totalPlanned - totalRealized)}</span>`;
+      } else {
+        realEl.style.color = '#065f46';
+        realSub.innerHTML = `<span class="status-pill ok">Dentro do planejado</span> <span>${consumed.toFixed(0)}% consumido</span>`;
+      }
+    }
 
     const surplusEl = document.getElementById('kpi-surplus');
     if (surplus < 0) {
@@ -1414,10 +1474,11 @@
     // meta = multiplicador x soma dos limites das categorias essenciais (ORC-02).
     const balance    = Number(reservePosition?.valor_aplicado) || 0;
     const multiplier = Number(reserveData.multiplier) || 6;
-    const essentialMonthly = categories
+    const topCats = categories.filter(c => !c.parent_id);
+    const essentialMonthly = topCats
       .filter(c => c.essencial)
       .reduce((s, c) => s + (budgetPlans[c.name] || 0), 0);
-    const target = FinanceModel.essentialReserveTarget(categories, budgetPlans, multiplier);
+    const target = FinanceModel.essentialReserveTarget(topCats, budgetPlans, multiplier);
     const pct    = target > 0 ? Math.min((balance / target) * 100, 100) : 0;
 
     document.getElementById('reserve-current').textContent  = fmtBRL(balance);
@@ -1457,7 +1518,7 @@
     const colors  = [];
 
     categories
-      .filter(c => c.name !== 'Renda')
+      .filter(c => !c.parent_id && c.name !== 'Renda')
       .forEach((c, i) => {
         const v = realizedByClass[c.name] || 0;
         if (v > 0) {
@@ -1719,8 +1780,57 @@
     document.getElementById('modal-category-title').textContent = cat ? 'Editar categoria' : 'Nova categoria';
     document.getElementById('cat-name').value = cat?.name || '';
     document.getElementById('cat-essencial').checked = !!cat?.essencial;
+    // Gerenciador de subcategorias: só ao editar (nova categoria ganha "Geral" ao salvar)
+    const mgr = document.getElementById('subcat-manager');
+    if (cat && !cat.is_protected) { mgr.style.display = ''; renderSubcatManager(cat.id); }
+    else mgr.style.display = 'none';
     document.getElementById('modal-category').classList.add('open');
     setTimeout(() => document.getElementById('cat-name').focus(), 100);
+  }
+
+  /* ── Subcategorias (Ajuste 3) ── */
+  function subcategoriesOf(catId) {
+    return categories.filter(c => c.parent_id === catId)
+      .sort((a, b) => (a.name === 'Geral' ? -1 : b.name === 'Geral' ? 1 : a.name.localeCompare(b.name)));
+  }
+  function renderSubcatManager(catId) {
+    const subs = subcategoriesOf(catId);
+    document.getElementById('subcat-list').innerHTML = subs.length
+      ? subs.map(s => `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--surface-alt);border-radius:var(--radius-sm)">
+            <span style="font-size:.8438rem">${escHtml(s.name)}</span>
+            ${subs.length > 1 ? `<button type="button" class="icon-btn danger" title="Excluir" onclick="deleteSubcategory('${s.id}')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+            </button>` : '<span style="font-size:.6875rem;color:var(--text-muted)">mín. 1</span>'}
+          </div>`).join('')
+      : '<span style="font-size:.8125rem;color:var(--text-muted)">Sem subcategorias.</span>';
+  }
+  async function addSubcategory() {
+    if (!editingCategoryId) return;
+    const inp = document.getElementById('subcat-new');
+    const name = inp.value.trim();
+    if (!name) { toast('Informe o nome da subcategoria', 'error'); return; }
+    const parent = categories.find(c => c.id === editingCategoryId);
+    const { error } = await _supabase.from('categories').insert({
+      household_id: householdId, name, essencial: !!parent?.essencial,
+      parent_id: editingCategoryId, sort_order: 0,
+    });
+    if (error) {
+      toast(error.code === '23505' ? 'Já existe essa subcategoria.' : ('Erro: ' + error.message), 'error');
+      return;
+    }
+    inp.value = '';
+    await loadCategories();
+    renderSubcatManager(editingCategoryId);
+    toast('Subcategoria adicionada!', 'success');
+  }
+  async function deleteSubcategory(id) {
+    const { error } = await _supabase.from('categories').delete()
+      .eq('id', id).eq('household_id', householdId);
+    if (error) { toast('Erro: ' + error.message, 'error'); return; }
+    await loadCategories();
+    renderSubcatManager(editingCategoryId);
+    toast('Subcategoria removida', 'info');
   }
 
   function closeCategoryModal() {
@@ -1746,10 +1856,18 @@
         .eq('household_id', householdId));
     } else {
       const nextOrder = categories.reduce((max, c) => Math.max(max, c.sort_order || 0), 0) + 1;
-      const { error: e } = await _supabase
+      const { data: created, error: e } = await _supabase
         .from('categories')
-        .insert({ household_id: householdId, name, essencial, sort_order: nextOrder });
+        .insert({ household_id: householdId, name, essencial, sort_order: nextOrder })
+        .select().maybeSingle();
       error = e;
+      // Auto-seed "Geral": toda categoria nova já nasce com uma subcategoria válida.
+      if (!error && created) {
+        await _supabase.from('categories').insert({
+          household_id: householdId, name: 'Geral', essencial,
+          parent_id: created.id, sort_order: 0,
+        });
+      }
     }
 
     btn.classList.remove('btn-loading'); btn.disabled = false;
@@ -1826,6 +1944,8 @@
   document.getElementById('modal-category-close').addEventListener('click', closeCategoryModal);
   document.getElementById('modal-category-cancel').addEventListener('click', closeCategoryModal);
   document.getElementById('modal-category-save').addEventListener('click', saveCategory);
+  document.getElementById('btn-add-subcat').addEventListener('click', addSubcategory);
+  document.getElementById('subcat-new').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addSubcategory(); } });
   document.getElementById('modal-category').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeCategoryModal();
   });

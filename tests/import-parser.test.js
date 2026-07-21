@@ -148,23 +148,6 @@ test('parseCSV com colunas separadas de descrição e estabelecimento', () => {
   assert.equal(r.transactions[0].establishment, 'PADARIA STELLA');
 });
 
-/* ── detecção do sinal das compras no cartão ── */
-test('detectCardPurchaseSign: compras positivas dominam → +1', () => {
-  const r = P.parseCSV(fixture('fatura-cartao.csv'));
-  assert.equal(P.detectCardPurchaseSign(r.transactions), 1);
-});
-
-test('detectCardPurchaseSign: compras negativas dominam (Nubank OFX) → -1', () => {
-  const r = P.parseOFX(fixture('fatura-cartao-negativo.ofx'));
-  assert.equal(r.source, 'card');
-  assert.equal(P.detectCardPurchaseSign(r.transactions), -1);
-});
-
-test('detectCardPurchaseSign: empate e vazio → +1 (default)', () => {
-  assert.equal(P.detectCardPurchaseSign([{ amount: 10 }, { amount: -10 }]), 1);
-  assert.equal(P.detectCardPurchaseSign([]), 1);
-});
-
 /* ── parseFile: dispatcher ── */
 test('parseFile roteia por extensão e conteúdo', () => {
   assert.equal(P.parseFile('extrato.ofx', fixture('extrato-conta.ofx')).kind, 'ofx');
@@ -202,47 +185,56 @@ test('fingerprint desambigua linhas idênticas no MESMO arquivo, estável entre 
   assert.equal(P.fingerprint(tx, 'acc-1', seenB), a2);
 });
 
-/* ── categorização aprendida ── */
+/* ── categorização aprendida (Ajuste 3 — 2 níveis: categoria + subcategoria) ── */
 const history = [
-  { description: 'UBER *TRIP 0601', classification: 'Transporte' },
-  { description: 'UBER *TRIP 0615', classification: 'Transporte' },
-  { description: 'PADARIA STELLA', classification: 'Alimentação' },
-  { description: 'AMAZON BR', classification: 'Compras' },
-  { description: 'AMAZON BR', classification: 'Presentes' },
+  { description: 'UBER *TRIP 0601', classification: 'Transporte', subcategory: 'App' },
+  { description: 'UBER *TRIP 0615', classification: 'Transporte', subcategory: 'App' },
+  { description: 'PADARIA STELLA', classification: 'Alimentação', subcategory: 'Padaria' },
+  { description: 'AMAZON BR', classification: 'Compras', subcategory: 'Online' },
+  { description: 'AMAZON BR', classification: 'Presentes', subcategory: 'Online' },
   { description: 'POSTO SHELL', classification: 'Classificação neutra' },   // neutra não ensina
-  { description: 'IFOOD *X', classification: 'Alimentação', needs_category_review: true }, // pendente não ensina
+  { description: 'IFOOD *X', classification: 'Alimentação', subcategory: 'Delivery', needs_category_review: true }, // pendente não ensina
+  { description: 'SEM SUB', classification: 'Lazer' }, // categorizado mas sem subcategoria
 ];
 
-test('origem já categorizada vem preenchida sem perguntar (confident)', () => {
+test('origem já categorizada (categoria + subcategoria) vem preenchida sem perguntar', () => {
   const model = P.buildCategoryModel(history);
   const s = P.suggestCategory(model, 'UBER *TRIP 0702');
-  assert.deepEqual(s, { classification: 'Transporte', confident: true });
+  assert.deepEqual(s, { classification: 'Transporte', subcategory: 'App', confident: true });
   // uma única ocorrência também basta
   const s2 = P.suggestCategory(model, 'Padaria Stella 12/07');
-  assert.deepEqual(s2, { classification: 'Alimentação', confident: true });
+  assert.deepEqual(s2, { classification: 'Alimentação', subcategory: 'Padaria', confident: true });
 });
 
-test('histórico conflitante pergunta em vez de chutar', () => {
+test('histórico conflitante na CATEGORIA pergunta em vez de chutar', () => {
   const model = P.buildCategoryModel(history);
   const s = P.suggestCategory(model, 'AMAZON BR');
   assert.equal(s.confident, false);
   assert.ok(['Compras', 'Presentes'].includes(s.classification));
 });
 
-test('origem desconhecida e neutra/pendente vão para a fila', () => {
+test('categoria consistente mas SEM subcategoria conhecida também pergunta (ambas obrigatórias)', () => {
   const model = P.buildCategoryModel(history);
-  assert.deepEqual(P.suggestCategory(model, 'LOJA NUNCA VISTA'), { classification: null, confident: false });
-  assert.deepEqual(P.suggestCategory(model, 'POSTO SHELL'), { classification: null, confident: false });
-  assert.deepEqual(P.suggestCategory(model, 'IFOOD *X'), { classification: null, confident: false });
+  const s = P.suggestCategory(model, 'Sem Sub');
+  assert.equal(s.classification, 'Lazer');
+  assert.equal(s.subcategory, null);
+  assert.equal(s.confident, false);
 });
 
-test('consistência ≥80% mantém confiança mesmo com um desvio antigo', () => {
+test('origem desconhecida e neutra/pendente vão para a fila', () => {
+  const model = P.buildCategoryModel(history);
+  assert.deepEqual(P.suggestCategory(model, 'LOJA NUNCA VISTA'), { classification: null, subcategory: null, confident: false });
+  assert.deepEqual(P.suggestCategory(model, 'POSTO SHELL'), { classification: null, subcategory: null, confident: false });
+  assert.deepEqual(P.suggestCategory(model, 'IFOOD *X'), { classification: null, subcategory: null, confident: false });
+});
+
+test('consistência ≥80% mantém confiança (categoria e subcategoria) mesmo com um desvio antigo', () => {
   const h = [
-    ...Array(8).fill({ description: 'SPOTIFY', classification: 'Assinaturas' }),
-    { description: 'SPOTIFY', classification: 'Lazer' },
+    ...Array(8).fill({ description: 'SPOTIFY', classification: 'Assinaturas', subcategory: 'Streaming' }),
+    { description: 'SPOTIFY', classification: 'Lazer', subcategory: 'Música' },
   ];
   const s = P.suggestCategory(P.buildCategoryModel(h), 'SPOTIFY');
-  assert.deepEqual(s, { classification: 'Assinaturas', confident: true });
+  assert.deepEqual(s, { classification: 'Assinaturas', subcategory: 'Streaming', confident: true });
 });
 
 /* ── normalizeKey ── */

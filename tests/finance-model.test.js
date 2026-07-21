@@ -16,6 +16,8 @@ const {
   projectMonthlyContribution,
   projectsToSimulationEvents,
   simulateIndependence,
+  investmentSummary,
+  effectiveCardLimit,
 } = require('../js/finance-model.js');
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -341,4 +343,42 @@ test('simulateIndependence: meta de patrimônio = renda líquida anual / taxa p�
 test('annualToMonthlyRate é o inverso composto de annualizedRate', () => {
   const monthly = annualToMonthlyRate(0.04);
   assert.ok(Math.abs(annualizedRate(monthly) - 0.04) < 1e-10);
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   Ajuste 2 — Card de Investimentos + "libera limite do cartão"
+   ══════════════════════════════════════════════════════════════════ */
+
+test('investmentSummary: soma investido, disponível (líquido/vencido), 12m e vencimento', () => {
+  const positions = [
+    // sem vencimento: disponível (líquido) e projeção 12m a partir do valor atual
+    { valor_aplicado: 1000, rendimento_acumulado: 0, taxa: 0.01, vencimento: null },
+    // vencimento no passado: já líquido, conta em "disponível"
+    { valor_aplicado: 2000, rendimento_acumulado: 100, taxa: 0.005, vencimento: '2020-01-01' },
+  ];
+  const s = investmentSummary(positions, '2026-07-20');
+  assert.equal(s.totalInvested, 3000);
+  // disponível = ambas as posições (sem vencimento OU já vencida)
+  assert.equal(s.totalAvailable, 1000 + 2100);
+  // 12m: 1000*1.01^12 + 2100*1.005^12
+  const expected12m = 1000 * Math.pow(1.01, 12) + 2100 * Math.pow(1.005, 12);
+  assert.ok(Math.abs(s.total12m - expected12m) < 0.01);
+});
+
+test('investmentSummary: posição com vencimento futuro NÃO entra em "disponível"', () => {
+  const positions = [{ valor_aplicado: 5000, rendimento_acumulado: 0, taxa: 0.01, vencimento: '2030-01-01' }];
+  const s = investmentSummary(positions, '2026-07-20');
+  assert.equal(s.totalAvailable, 0);
+  assert.ok(s.totalAtMaturity > 5000); // projeção composta até o vencimento
+});
+
+test('investmentSummary: lista vazia devolve zeros', () => {
+  const s = investmentSummary([], '2026-07-20');
+  assert.deepEqual(s, { totalInvested: 0, totalAvailable: 0, total12m: 0, totalAtMaturity: 0 });
+});
+
+test('effectiveCardLimit: soma o valor aplicado das posições "libera limite" vinculadas', () => {
+  assert.equal(effectiveCardLimit(1000, [{ valor_aplicado: 500 }, { valor_aplicado: 200 }]), 1700);
+  assert.equal(effectiveCardLimit(1000, []), 1000);
+  assert.equal(effectiveCardLimit(null, [{ valor_aplicado: 300 }]), 300);
 });

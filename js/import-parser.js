@@ -359,7 +359,11 @@
   ───────────────────────────────────────────── */
   const NEUTRAL_CLASSIFICATION = 'Classificação neutra';
 
-  /** Constrói o modelo a partir do histórico de lançamentos do casal. */
+  /**
+   * Constrói o modelo a partir do histórico já categorizado do casal.
+   * Aprende DOIS níveis: chave (descrição normalizada) → categoria → {count, subs}.
+   * key -> Map(categoria -> { count, subs: Map(subcategoria -> count) })
+   */
   function buildCategoryModel(historyTxs) {
     const model = new Map();
     for (const t of historyTxs || []) {
@@ -369,47 +373,45 @@
       const key = normalizeKey(t.description);
       if (!key) continue;
       if (!model.has(key)) model.set(key, new Map());
-      const byClass = model.get(key);
-      byClass.set(cls, (byClass.get(cls) || 0) + 1);
+      const byCat = model.get(key);
+      if (!byCat.has(cls)) byCat.set(cls, { count: 0, subs: new Map() });
+      const entry = byCat.get(cls);
+      entry.count += 1;
+      const sub = t.subcategory;
+      if (sub) entry.subs.set(sub, (entry.subs.get(sub) || 0) + 1);
     }
     return model;
   }
 
   /**
-   * Sugestão para uma descrição:
-   * - origem já vista com classificação consistente (≥80% das ocorrências) →
-   *   vem preenchida SEM perguntar (confident: true);
-   * - origem vista com histórico conflitante → sugere a mais comum, mas
-   *   pergunta (confident: false);
-   * - origem nunca vista → pergunta (classification: null).
+   * Sugestão de categoria E subcategoria para uma descrição:
+   * - só vem preenchida sem perguntar (confident:true) quando AMBOS os níveis
+   *   são consistentes (uma única opção, ou ≥80% das ocorrências) e há uma
+   *   subcategoria conhecida — como ambos são obrigatórios, sem subcategoria
+   *   confiável o item vai para a fila;
+   * - caso contrário sugere o que der e pergunta (confident:false);
+   * - origem nunca vista → pergunta (classification/subcategory: null).
    */
   function suggestCategory(model, description) {
     const key = normalizeKey(description);
-    const byClass = key ? model.get(key) : null;
-    if (!byClass || byClass.size === 0) return { classification: null, confident: false };
-    let top = null, topCount = 0, total = 0;
-    for (const [cls, count] of byClass) {
-      total += count;
-      if (count > topCount) { top = cls; topCount = count; }
+    const byCat = key ? model.get(key) : null;
+    if (!byCat || byCat.size === 0) return { classification: null, subcategory: null, confident: false };
+    let top = null, topCount = 0, total = 0, topEntry = null;
+    for (const [cls, entry] of byCat) {
+      total += entry.count;
+      if (entry.count > topCount) { topCount = entry.count; top = cls; topEntry = entry; }
     }
-    const share = topCount / total;
-    return { classification: top, confident: byClass.size === 1 || share >= 0.8 };
-  }
+    const catConfident = byCat.size === 1 || (topCount / total) >= 0.8;
 
-  /**
-   * Numa fatura de cartão, as COMPRAS são a esmagadora maioria das linhas —
-   * mas o sinal delas varia por banco (umas usam +compra/−pagamento, outras
-   * o contrário). Em vez de assumir, detectamos o sinal dominante: ele é o
-   * das compras. Retorna +1 ou -1 (empate/vazio → +1). A página usa isso para
-   * marcar como SAÍDA as linhas cujo sinal bate com o das compras.
-   */
-  function detectCardPurchaseSign(transactions) {
-    let pos = 0, neg = 0;
-    for (const t of transactions || []) {
-      if (t.amount > 0) pos++;
-      else if (t.amount < 0) neg++;
-    }
-    return neg > pos ? -1 : 1;
+    let sub = null, subCount = 0, subTotal = 0;
+    for (const [s, c] of topEntry.subs) { subTotal += c; if (c > subCount) { subCount = c; sub = s; } }
+    const subConfident = topEntry.subs.size === 1 || (subTotal > 0 && (subCount / subTotal) >= 0.8);
+
+    return {
+      classification: top,
+      subcategory: sub,
+      confident: catConfident && subConfident && !!sub,
+    };
   }
 
   return {
@@ -424,7 +426,6 @@
     fingerprint,
     buildCategoryModel,
     suggestCategory,
-    detectCardPurchaseSign,
     NEUTRAL_CLASSIFICATION,
   };
 });

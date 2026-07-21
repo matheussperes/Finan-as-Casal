@@ -12,7 +12,7 @@ const ROOT = path.resolve(__dirname, '..');
 
 const ofx = readFileSync(path.join(__dirname, 'fixtures', 'extrato-conta.ofx'), 'utf-8');
 const csvCard = readFileSync(path.join(__dirname, 'fixtures', 'fatura-cartao.csv'), 'utf-8');
-const ofxCardNeg = readFileSync(path.join(__dirname, 'fixtures', 'fatura-cartao-negativo.ofx'), 'utf-8');
+const ofxCardCredits = readFileSync(path.join(__dirname, 'fixtures', 'fatura-cartao-creditos.ofx'), 'utf-8');
 
 /* Stub do Supabase: DB em memória com um query-builder thenable que cobre os
    encadeamentos usados pela página (select/eq/in/gte/lte/order/limit/insert/
@@ -22,19 +22,39 @@ window.__db = {
   households: [{ id: 'hh-1', name: 'Casal Teste' }],
   members: [{ id: 'm-me', household_id: 'hh-1', user_id: 'u-me', name: 'Matheus', role: 'primary' }],
   accounts: [{ id: 'acc-1', household_id: 'hh-1', name: 'Nubank', account_type: 'checking', owner_type: 'joint', member_id: null, balance: 5000, is_active: true, created_at: '2026-01-01' }],
-  credit_cards: [{ id: 'card-1', account_id: 'acc-1', name: 'Nubank Cartão', closing_day: 5, due_day: 15, limit_amount: 10000, created_at: '2026-01-01' }],
-  categories: ['Renda','Despesas obrigatórias','Classificação neutra','Transporte','Alimentação','Moradia','Lazer','Investimentos','Aporte reserva de emergência']
-    .map((name, i) => ({ id: 'cat-' + i, household_id: 'hh-1', name, sort_order: i, essencial: false, created_at: '2026-01-0' + (i+1) })),
+  credit_cards: [{ id: 'card-1', account_id: 'acc-1', name: 'Nubank Cartão', closing_day: 5, due_day: 15, credit_limit: 10000, created_at: '2026-01-01' }],
+  categories: (() => {
+    // Categorias de topo (Ajuste 3: 2 níveis) + subcategorias usadas no teste.
+    const tops = ['Renda','Despesas obrigatórias','Classificação neutra','Transporte','Alimentação','Moradia','Lazer','Investimentos','Aporte reserva de emergência']
+      .map((name, i) => ({ id: 'cat-' + i, household_id: 'hh-1', name, parent_id: null, sort_order: i, essencial: false, created_at: '2026-01-0' + (i+1) }));
+    const subsByParent = {
+      'cat-0': ['Salário', 'Geral'],
+      'cat-1': ['Geral'],
+      'cat-2': ['Geral'],
+      'cat-3': ['App', 'Geral'],
+      'cat-4': ['Restaurante', 'Padaria', 'Geral'],
+      'cat-5': ['Aluguel', 'Geral'],
+      'cat-6': ['Geral'],
+      'cat-7': ['Geral'],
+      'cat-8': ['Geral'],
+    };
+    const subs = [];
+    let n = 0;
+    for (const [parentId, names] of Object.entries(subsByParent)) {
+      names.forEach(name => subs.push({ id: 'sub-' + (n++), household_id: 'hh-1', name, parent_id: parentId, sort_order: 0, essencial: false, created_at: '2026-01-02' }));
+    }
+    return [...tops, ...subs];
+  })(),
   invoices: [],
   invoice_payments: [],
   investment_positions: [],
   transactions: [
-    // histórico que ensina a categorização (origem já categorizada)
-    { id: 't1', household_id: 'hh-1', description: 'UBER *TRIP 0601', classification: 'Transporte', direction: 'expense', amount: 30, date: '2026-06-01', needs_category_review: false },
-    { id: 't2', household_id: 'hh-1', description: 'UBER *TRIP 0620', classification: 'Transporte', direction: 'expense', amount: 25, date: '2026-06-20', needs_category_review: false },
-    { id: 't3', household_id: 'hh-1', description: 'ALUGUEL APARTAMENTO PIX ENVIADO IMOBILIARIA CENTRAL', classification: 'Moradia', direction: 'expense', amount: 1234.56, date: '2026-06-03', needs_category_review: false },
-    { id: 't4', household_id: 'hh-1', description: 'SALARIO EMPRESA XYZ', classification: 'Renda', direction: 'income', amount: 8500, date: '2026-06-05', needs_category_review: false },
-    { id: 't5', household_id: 'hh-1', description: 'IFOOD *RESTAURANTE BOM', classification: 'Alimentação', direction: 'expense', amount: 40, date: '2026-06-10', needs_category_review: false },
+    // histórico que ensina a categorização (origem já categorizada, com subcategoria)
+    { id: 't1', household_id: 'hh-1', description: 'UBER *TRIP 0601', classification: 'Transporte', subcategory: 'App', direction: 'expense', amount: 30, date: '2026-06-01', needs_category_review: false },
+    { id: 't2', household_id: 'hh-1', description: 'UBER *TRIP 0620', classification: 'Transporte', subcategory: 'App', direction: 'expense', amount: 25, date: '2026-06-20', needs_category_review: false },
+    { id: 't3', household_id: 'hh-1', description: 'ALUGUEL APARTAMENTO PIX ENVIADO IMOBILIARIA CENTRAL', classification: 'Moradia', subcategory: 'Aluguel', direction: 'expense', amount: 1234.56, date: '2026-06-03', needs_category_review: false },
+    { id: 't4', household_id: 'hh-1', description: 'SALARIO EMPRESA XYZ', classification: 'Renda', subcategory: 'Salário', direction: 'income', amount: 8500, date: '2026-06-05', needs_category_review: false },
+    { id: 't5', household_id: 'hh-1', description: 'IFOOD *RESTAURANTE BOM', classification: 'Alimentação', subcategory: 'Restaurante', direction: 'expense', amount: 40, date: '2026-06-10', needs_category_review: false },
     // PADARIA STELLA NÃO ensinada de propósito → vai para a fila
   ],
 };
@@ -157,9 +177,11 @@ check('resumo: 5 novos', /5 novo/.test(summary), summary.trim());
 check('resumo: 0 duplicados', /0 duplicado/.test(summary));
 check('resumo: 1 sem categoria (Padaria não ensinada)', /1 sem categoria/.test(summary));
 
-// Categoria sugerida confiável para o Uber (origem já vista)
-const uberCat = await page.$eval('#import-preview-body tr:first-child .imp-cat-select', el => el.value).catch(() => null);
+// Categoria E subcategoria sugeridas com confiança para o Uber (origem já vista)
+const uberCat = await page.$eval('#import-preview-body tr:first-child .imp-cat-select[data-role="cat"]', el => el.value).catch(() => null);
+const uberSub = await page.$eval('#import-preview-body tr:first-child .imp-cat-select[data-role="sub"]', el => el.value).catch(() => null);
 check('Uber vem pré-categorizado como Transporte', uberCat === 'Transporte', String(uberCat));
+check('Uber vem com subcategoria App (Ajuste 3 — 2 níveis)', uberSub === 'App', String(uberSub));
 
 // Estabelecimento preenchido no preview (coluna 3 = input establishment)
 const uberEst = await page.$eval('#import-preview-body tr:first-child .imp-edit[data-f="establishment"]', el => el.value).catch(() => null);
@@ -176,7 +198,8 @@ check('5 lançamentos importados no banco', imported.length === 5, `${imported.l
 const salario = imported.find(t => /SALARIO/.test(t.description));
 check('Salário importado como entrada (income)', salario && salario.direction === 'income', salario && salario.direction);
 const aluguel = imported.find(t => /ALUGUEL/.test(t.description));
-check('Aluguel importado como saída (expense) e categoria Moradia', aluguel && aluguel.direction === 'expense' && aluguel.classification === 'Moradia');
+check('Aluguel importado como saída (expense), categoria Moradia e subcategoria Aluguel',
+  aluguel && aluguel.direction === 'expense' && aluguel.classification === 'Moradia' && aluguel.subcategory === 'Aluguel');
 check('estabelecimento gravado na transação', aluguel && aluguel.establishment === 'ALUGUEL APARTAMENTO', aluguel && aluguel.establishment);
 const uberEdited = imported.find(t => t.establishment === 'UBER *TRIP 0702' && t.date === '2026-07-02');
 check('descrição editada no preview foi persistida', uberEdited && uberEdited.description === 'UBER CORRIGIDO NA VALIDACAO', uberEdited && uberEdited.description);
@@ -208,14 +231,19 @@ await page.click('#btn-open-review');
 await page.waitForTimeout(200);
 const reviewRows = await page.locator('#review-body tr').count();
 check('modal de revisão lista 1 item', reviewRows === 1, `${reviewRows}`);
-await page.selectOption('#review-body tr:first-child .imp-cat-select', 'Alimentação');
+await page.selectOption('#review-body tr:first-child .imp-cat-select[data-role="cat"]', 'Alimentação');
+await page.selectOption('#review-body tr:first-child .imp-cat-select[data-role="sub"]', 'Padaria');
 await page.click('#btn-review-save');
 await page.waitForTimeout(300);
 const padariaAfter = await page.evaluate(() => window.__db.transactions.find(t => /PADARIA/.test(t.description)));
-check('após revisão, Padaria = Alimentação e sem review', padariaAfter.classification === 'Alimentação' && padariaAfter.needs_category_review === false);
+check('após revisão, Padaria = Alimentação/Padaria e sem review',
+  padariaAfter.classification === 'Alimentação' && padariaAfter.subcategory === 'Padaria' && padariaAfter.needs_category_review === false);
 check('banner some quando a fila esvazia', !(await page.locator('#review-banner').isVisible()));
 
-/* ── 4. Importar CSV de fatura de cartão ── */
+/* ── 4. Importar CSV de fatura de cartão (Ajuste 1 — bug: crédito era descartado) ──
+   fatura-cartao.csv: 5 linhas positivas (compras) + 1 negativa (-1.500,00,
+   "PAGAMENTO RECEBIDO" = crédito). Convenção explícita do cartão: sem sinal
+   = compra/saída; "−" na frente = crédito/entrada. TODAS devem ser lançadas. */
 await page.click('#btn-import');
 await page.waitForTimeout(150);
 await page.click('.import-dest-btn[data-dest="card"]');
@@ -224,34 +252,80 @@ await setFile('fatura-cartao.csv', csvCard);
 await page.click('#btn-import-parse');
 await page.waitForTimeout(300);
 const cardSummary = await page.locator('#import-summary').textContent();
-check('CSV de cartão: 6 lançamentos lidos (5 compras + 1 pagamento)', /5 novo|6 novo/.test(cardSummary), cardSummary.trim());
-check('CSV de cartão avisa que pagamento não será importado', /pagamento.*não ser/i.test(cardSummary));
+check('CSV de cartão: 6 novos (5 compras + 1 crédito, nenhum descartado)', /6 novo/.test(cardSummary), cardSummary.trim());
+check('resumo avisa 1 crédito do cartão que abate a fatura', /1 crédito.*abatem a fatura/i.test(cardSummary), cardSummary.trim());
 await page.click('#btn-import-confirm');
 await page.waitForTimeout(400);
 const cardTx = await page.evaluate(() => window.__db.transactions.filter(t => t.credit_card_id === 'card-1'));
-check('5 compras importadas no cartão (pagamento excluído)', cardTx.length === 5, `${cardTx.length}`);
-check('compras do cartão têm invoice_id e direction expense', cardTx.every(t => t.invoice_id && t.direction === 'expense'));
+check('as 6 linhas foram importadas — crédito NÃO foi descartado (bug corrigido)', cardTx.length === 6, `${cardTx.length}`);
+const creditTx = cardTx.find(t => t.description.includes('PAGAMENTO RECEBIDO'));
+check('crédito (valor negativo) importado como entrada (income)', creditTx && creditTx.direction === 'income', creditTx && creditTx.direction);
+check('compras (sem sinal) importadas como saída (expense)', cardTx.filter(t => t.direction === 'expense').length === 5);
+check('todas as linhas do cartão têm invoice_id (compra e crédito)', cardTx.every(t => t.invoice_id));
 const invoicesCreated = await page.evaluate(() => window.__db.invoices.length);
-check('faturas foram criadas para as compras', invoicesCreated >= 1, `${invoicesCreated}`);
+check('faturas foram criadas', invoicesCreated >= 1, `${invoicesCreated}`);
 
-/* ── 5. Cartão com compras NEGATIVAS (bug reportado): devem virar SAÍDA ── */
+/* ── 5. Fatura de cartão com créditos explícitos (estorno/IOF devolvido) ──
+   fatura-cartao-creditos.ofx: 4 compras (sem sinal) + 2 créditos ("−"). */
 await page.evaluate(() => { window.__db.transactions = window.__db.transactions.filter(t => t.credit_card_id !== 'card-1'); });
 await page.click('#btn-import');
 await page.waitForTimeout(150);
 await page.click('.import-dest-btn[data-dest="card"]');
 await page.selectOption('#import-card', 'card-1');
-await setFile('fatura-cartao-negativo.ofx', ofxCardNeg);
+await setFile('fatura-cartao-creditos.ofx', ofxCardCredits);
 await page.click('#btn-import-parse');
 await page.waitForTimeout(300);
-// No preview, as 4 compras (negativas no arquivo) devem estar marcadas como Saída
 const dirLabels = await page.$$eval('#import-preview-body .imp-dir', els => els.map(e => e.textContent.trim()));
 const saidas = dirLabels.filter(l => l === 'Saída').length;
-check('compras negativas do cartão aparecem como Saída (não Entrada)', saidas === 4, `${saidas} saídas de ${dirLabels.length}`);
+const entradas = dirLabels.filter(l => l === 'Entrada').length;
+check('4 compras aparecem como Saída e 2 créditos como Entrada', saidas === 4 && entradas === 2, `${saidas} saídas, ${entradas} entradas`);
 await page.click('#btn-import-confirm');
 await page.waitForTimeout(400);
-const cardNegTx = await page.evaluate(() => window.__db.transactions.filter(t => t.credit_card_id === 'card-1'));
-check('4 compras negativas importadas como expense', cardNegTx.length === 4 && cardNegTx.every(t => t.direction === 'expense'), `${cardNegTx.length}`);
-check('pagamento positivo (1500) NÃO importado no cartão', !cardNegTx.some(t => t.amount === 1500));
+const cardCreditTx = await page.evaluate(() => window.__db.transactions.filter(t => t.credit_card_id === 'card-1'));
+check('todas as 6 linhas importadas (nenhum crédito descartado)', cardCreditTx.length === 6, `${cardCreditTx.length}`);
+check('4 compras como expense', cardCreditTx.filter(t => t.direction === 'expense').length === 4);
+check('2 créditos (estorno/IOF) como income', cardCreditTx.filter(t => t.direction === 'income').length === 2);
+const estorno = cardCreditTx.find(t => /ESTORNO/.test(t.description));
+check('estorno abate a fatura (entra como income vinculado à invoice)', estorno && estorno.direction === 'income' && !!estorno.invoice_id);
+
+/* ── 6. Caminho de reimportação (Ajuste 1) ──
+   Simula o estado ANTERIOR ao bug corrigido: um casal já tinha importado
+   esta fatura quando o sistema descartava créditos, então só as 4 compras
+   estão no banco (com o import_fingerprint que o parser gera de verdade —
+   FITID). Reimportar o MESMO arquivo deve: reconhecer as 4 compras como
+   duplicadas (não duplicar) e trazer só os 2 créditos que faltavam. */
+await page.evaluate(() => {
+  window.__db.transactions = window.__db.transactions.filter(t => t.credit_card_id !== 'card-1');
+  const preExisting = [
+    { fitid: 'c2026070201', amount: 56.90 },
+    { fitid: 'c2026070501', amount: 250.00 },
+    { fitid: 'c2026070801', amount: 44.90 },
+    { fitid: 'c2026071001', amount: 189.99 },
+  ];
+  preExisting.forEach((r, i) => {
+    window.__db.transactions.push({
+      id: 'old-' + i, household_id: 'hh-1', account_id: 'acc-1', credit_card_id: 'card-1',
+      direction: 'expense', amount: r.amount, date: '2026-07-0' + (i + 2),
+      description: 'compra antiga', classification: 'Classificação neutra',
+      source: 'import_ofx', import_fingerprint: 'id:card-1:' + r.fitid, needs_category_review: true,
+    });
+  });
+});
+await page.click('#btn-import');
+await page.waitForTimeout(150);
+await page.click('.import-dest-btn[data-dest="card"]');
+await page.selectOption('#import-card', 'card-1');
+await setFile('fatura-cartao-creditos.ofx', ofxCardCredits);
+await page.click('#btn-import-parse');
+await page.waitForTimeout(300);
+const reimportSummary = await page.locator('#import-summary').textContent();
+check('reimportação reconhece as 4 compras antigas como duplicadas', /4 duplicado/.test(reimportSummary), reimportSummary.trim());
+check('reimportação traz só os 2 créditos que faltavam como novos', /2 novo/.test(reimportSummary), reimportSummary.trim());
+await page.click('#btn-import-confirm');
+await page.waitForTimeout(400);
+const afterReimport = await page.evaluate(() => window.__db.transactions.filter(t => t.credit_card_id === 'card-1'));
+check('total final = 6 (4 antigas + 2 créditos recuperados, sem duplicar)', afterReimport.length === 6, `${afterReimport.length}`);
+check('créditos recuperados entraram como income', afterReimport.filter(t => t.direction === 'income').length === 2);
 
 if (pageErrors.length) { console.log('\nErros de página:'); pageErrors.forEach(e => console.log('  ' + e)); }
 await browser.close();
