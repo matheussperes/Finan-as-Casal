@@ -956,9 +956,13 @@
         <label class="form-label">Estabelecimento <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
         <input class="input" type="text" id="tx-place" placeholder="Ex: Ifood, Nubank, Empresa…" maxlength="80" />
       </div>
-      <div class="form-group full">
-        <label class="form-label">Classificação</label>
+      <div class="form-group">
+        <label class="form-label">Categoria</label>
         <select class="input select" id="tx-cat"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Subcategoria</label>
+        <select class="input select" id="tx-subcat"></select>
       </div>
       <div class="form-group full" id="tx-investment-group" style="display:none">
         <label class="form-label">Posição de investimento</label>
@@ -980,6 +984,15 @@
           <div class="form-group">
             <label class="form-label">Vencimento <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
             <input class="input" type="date" id="tx-position-vencimento" />
+          </div>
+          <label class="form-group full" style="flex-direction:row;align-items:center;gap:8px;font-size:.8125rem;color:var(--text-secondary);cursor:pointer">
+            <input type="checkbox" id="tx-position-liberates-limit" style="width:auto" />
+            Este investimento libera limite do cartão de crédito
+          </label>
+          <div class="form-group full" id="tx-position-card-group" style="display:none">
+            <label class="form-label">Cartão vinculado</label>
+            <select class="input select" id="tx-position-card"></select>
+            <span class="form-hint">O valor aplicado aqui soma no limite deste cartão; resgatar reduz o limite na mesma proporção.</span>
           </div>
         </div>
       </div>
@@ -1226,7 +1239,7 @@
 
 <!-- ═══ Modal IMPORTAÇÃO OFX/CSV (LAN-05) ═══ -->
 <div class="modal-overlay" id="modal-import">
-  <div class="modal modal-lg" style="max-width:920px;width:96vw">
+  <div class="modal modal-lg" style="max-width:1400px;width:98vw">
     <div class="modal-header">
       <span class="modal-title" id="modal-import-title">Importar extrato / fatura</span>
       <button class="btn-ghost btn-icon modal-close" id="modal-import-close">
@@ -1280,8 +1293,8 @@
     <!-- Etapa 2: preview + categorização -->
     <div id="import-step-preview" style="display:none">
       <div class="import-summary" id="import-summary"></div>
-      <p class="import-preview-hint">Revise antes de importar: você pode editar a descrição, o estabelecimento,
-        alternar entrada/saída (clique no rótulo) e escolher a categoria de cada lançamento.</p>
+      <p class="import-preview-hint">Revise antes de importar: você pode editar a descrição e o estabelecimento,
+        alternar entrada/saída (clique no rótulo) e escolher categoria e subcategoria de cada lançamento.</p>
       <div class="import-preview-wrap">
         <table class="import-preview-table">
           <thead>
@@ -1289,8 +1302,9 @@
               <th style="width:74px">Data</th>
               <th style="min-width:180px">Descrição</th>
               <th style="min-width:150px">Estabelecimento</th>
-              <th style="width:150px">Valor</th>
-              <th style="width:200px">Categoria</th>
+              <th style="width:140px">Valor</th>
+              <th style="width:180px">Categoria</th>
+              <th style="width:160px">Subcategoria</th>
             </tr>
           </thead>
           <tbody id="import-preview-body"></tbody>
@@ -1306,7 +1320,7 @@
 
 <!-- ═══ Modal CONFIRMAR CATEGORIA (fila LAN-05) ═══ -->
 <div class="modal-overlay" id="modal-review">
-  <div class="modal modal-lg" style="max-width:920px;width:96vw">
+  <div class="modal modal-lg" style="max-width:1400px;width:98vw">
     <div class="modal-header">
       <span class="modal-title">Confirmar categoria</span>
       <button class="btn-ghost btn-icon modal-close" id="modal-review-close">
@@ -1318,7 +1332,7 @@
     </div>
     <p style="font-size:.8438rem;color:var(--text-secondary);margin-bottom:14px">
       Estes lançamentos foram importados mas não puderam ser categorizados com segurança.
-      Ajuste a descrição/estabelecimento se quiser e escolha a categoria — da próxima vez, a mesma origem virá preenchida sozinha.
+      Ajuste a descrição/estabelecimento se quiser e escolha categoria E subcategoria — da próxima vez, a mesma origem virá preenchida sozinha.
     </p>
     <div class="import-preview-wrap" style="max-height:52vh">
       <table class="import-preview-table">
@@ -1328,7 +1342,8 @@
             <th style="min-width:180px">Descrição</th>
             <th style="min-width:150px">Estabelecimento</th>
             <th style="width:110px;text-align:right">Valor</th>
-            <th style="width:200px">Categoria</th>
+            <th style="width:180px">Categoria</th>
+            <th style="width:160px">Subcategoria</th>
           </tr>
         </thead>
         <tbody id="review-body"></tbody>
@@ -1574,8 +1589,10 @@
       allCreditCards = [];
     }
 
-    await loadCardFinanceData();
+    // investmentPositions primeiro: cardAvailableLimit (limite efetivo, Ajuste 2)
+    // depende das posições "libera limite" já carregadas.
     await loadInvestmentPositions();
+    await loadCardFinanceData();
     await refreshInvoiceStatuses();
     renderInvoiceAlerts();
 
@@ -1601,20 +1618,36 @@
     investmentPositions = data || [];
   }
 
-  /* ── CATEGORIAS (ORC-01) — popula o filtro e o select do modal a partir do banco ── */
+  /* ── CATEGORIAS (ORC-01) — 2 níveis: categoria (topo) → subcategoria ── */
+  function topCategories() { return categories.filter(c => !c.parent_id); }
+  function categoryByName(name) { return topCategories().find(c => c.name === name) || null; }
+  function subcategoriesOf(catName) {
+    const cat = categoryByName(catName);
+    return cat ? categories.filter(c => c.parent_id === cat.id) : [];
+  }
+  /* Popula um <select> de subcategoria conforme a categoria escolhida. */
+  function populateSubcatSelect(selectEl, catName, selected) {
+    const subs = subcategoriesOf(catName);
+    selectEl.innerHTML = subs.map(s =>
+      `<option value="${escHtml(s.name)}"${s.name === selected ? ' selected' : ''}>${escHtml(s.name)}</option>`).join('');
+    if (selected && subs.some(s => s.name === selected)) selectEl.value = selected;
+  }
+
   function populateCategorySelects() {
+    const tops = topCategories();
     const filterSel = document.getElementById('filter-cat');
     const prevFilterValue = filterSel.value;
     filterSel.innerHTML = '<option value="">Todas as categorias</option>' +
-      categories.map(c => `<option value="${escHtml(c.name)}">${escHtml(c.name)}</option>`).join('');
-    if (categories.some(c => c.name === prevFilterValue)) filterSel.value = prevFilterValue;
+      tops.map(c => `<option value="${escHtml(c.name)}">${escHtml(c.name)}</option>`).join('');
+    if (tops.some(c => c.name === prevFilterValue)) filterSel.value = prevFilterValue;
 
     const txSel = document.getElementById('tx-cat');
     const prevTxValue = txSel.value;
-    txSel.innerHTML = categories
+    txSel.innerHTML = tops
       .map(c => `<option value="${escHtml(c.name)}">${escHtml(c.name)}</option>`).join('');
-    if (categories.some(c => c.name === prevTxValue)) txSel.value = prevTxValue;
-    else txSel.value = 'Despesas obrigatórias';
+    if (tops.some(c => c.name === prevTxValue)) txSel.value = prevTxValue;
+    else if (tops.some(c => c.name === 'Despesas obrigatórias')) txSel.value = 'Despesas obrigatórias';
+    populateSubcatSelect(document.getElementById('tx-subcat'), txSel.value, null);
   }
 
   /* ── TRANSFERÊNCIA PARA INVESTIMENTO (D1 — ORC-03) ──
@@ -1667,6 +1700,10 @@
     posSel.innerHTML = '<option value="">+ Nova posição…</option>' +
       positions.map(p => `<option value="${p.id}">${escHtml(p.name)} — ${fmtBRL(p.valor_aplicado)} aplicado</option>`).join('');
     newPosGroup.style.display = posSel.value === '' ? '' : 'none';
+    if (posSel.value === '') {
+      document.getElementById('tx-position-card').innerHTML = allCreditCards
+        .map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+    }
   }
 
   /* ── DADOS FINANCEIROS DE CARTÃO (faturas, pagamentos, transações de cartão) ──
@@ -1700,22 +1737,28 @@
   /* Total da fatura é sempre CALCULADO da soma das transações (invoices.total_amount
      só é persistido como snapshot no fechamento — nunca lido como fonte de verdade) */
   function invoiceComputedTotal(invoiceId) {
+    // Compras somam; créditos/estornos (direction income) abatem a fatura (Ajuste 1).
     return allCardTxs
-      .filter(t => t.invoice_id === invoiceId && t.direction === 'expense')
-      .reduce((s, t) => s + Number(t.amount), 0);
+      .filter(t => t.invoice_id === invoiceId)
+      .reduce((s, t) => s + (t.direction === 'expense' ? Number(t.amount) : -Number(t.amount)), 0);
   }
   function invoicePaidSum(invoiceId) {
     return allInvoicePayments
       .filter(p => p.invoice_id === invoiceId)
       .reduce((s, p) => s + Number(p.amount), 0);
   }
-  /* Disponível = limite − (faturas não pagas − o que já foi pago delas).
-     Parcelas futuras já estão em faturas 'open' futuras, então entram naturalmente. */
+  /* Disponível = limite EFETIVO (base + posições "libera limite" vinculadas —
+     Ajuste 2) − (faturas não pagas − o que já foi pago delas). Parcelas
+     futuras já estão em faturas 'open' futuras, então entram naturalmente. */
+  function cardEffectiveLimit(card) {
+    const linked = investmentPositions.filter(p => p.linked_card_id === card.id);
+    return FinanceModel.effectiveCardLimit(card.credit_limit, linked);
+  }
   function cardAvailableLimit(card) {
     const committed = allInvoices
       .filter(i => i.credit_card_id === card.id && i.status !== 'paid')
       .reduce((s, i) => s + Math.max(0, invoiceComputedTotal(i.id) - invoicePaidSum(i.id)), 0);
-    return Number(card.credit_limit) - committed;
+    return cardEffectiveLimit(card) - committed;
   }
 
   /* ═══════════════════════════════════════════════════════════════
@@ -2003,9 +2046,10 @@
   let importRows = [];             // linhas normalizadas para preview/insert
   let categoryModel = null;        // modelo aprendido do histórico
 
-  /* Categorias válidas para atribuição manual (exclui as internas de investimento) */
+  /* Categorias de topo válidas para atribuição na importação/fila (exclui as
+     internas de investimento). Subcategorias não entram aqui. */
   function assignableCategories() {
-    return categories.filter(c =>
+    return topCategories().filter(c =>
       c.name !== FinanceModel.INVESTMENT_CATEGORY_NAME &&
       c.name !== FinanceModel.RESERVE_CATEGORY_NAME);
   }
@@ -2014,6 +2058,13 @@
     const blank = `<option value="">— escolher —</option>`;
     return blank + assignableCategories()
       .map(c => `<option value="${escHtml(c.name)}"${c.name === selected ? ' selected' : ''}>${escHtml(c.name)}</option>`)
+      .join('');
+  }
+
+  function subcatOptionsHtml(catName, selected) {
+    const blank = `<option value="">— sub —</option>`;
+    return blank + subcategoriesOf(catName)
+      .map(s => `<option value="${escHtml(s.name)}"${s.name === selected ? ' selected' : ''}>${escHtml(s.name)}</option>`)
       .join('');
   }
 
@@ -2115,23 +2166,18 @@
       (data || []).forEach(r => existing.add(r.import_fingerprint));
     }
 
-    // Cartão: o sinal das COMPRAS varia por banco — detecta o dominante em vez de chutar
-    const purchaseSign = importDest === 'card'
-      ? ImportParser.detectCardPurchaseSign(importParsed.transactions) : null;
-
     importRows = raw.map(r => {
       const isDup = existing.has(r.fp);
-      // Conta: negativo = saída. Cartão: sinal das compras = saída (o resto é pagamento/estorno).
-      const isExpense = importDest === 'card'
-        ? Math.sign(r.amount) === purchaseSign
-        : r.amount < 0;
+      /* Convenção de sinal POR ORIGEM (Ajuste 1):
+         - Conta corrente: negativo = saída; positivo/"+" = entrada.
+         - Cartão: negativo = crédito/estorno (entrada, abate a fatura e devolve
+           limite); positivo/sem sinal = compra (saída, aumenta fatura/consome limite). */
+      const isExpense = importDest === 'card' ? r.amount >= 0 : r.amount < 0;
       const suggestion = ImportParser.suggestCategory(categoryModel, r.description);
-      let classification, needsReview;
-      if (suggestion.confident && suggestion.classification) {
-        classification = suggestion.classification; needsReview = false;
-      } else {
-        classification = suggestion.classification || ''; needsReview = true;
-      }
+      const classification = suggestion.classification || '';
+      const subcategory = suggestion.subcategory || '';
+      // Ambos os níveis são obrigatórios — sem sugestão confiável dos dois, vai para a fila.
+      const needsReview = !suggestion.confident || !classification || !subcategory;
       return {
         date: r.date,
         description: r.description,
@@ -2142,6 +2188,7 @@
         rawAmount: r.amount,
         isDup,
         classification,
+        subcategory,
         needsReview,
       };
     });
@@ -2156,18 +2203,20 @@
     const newRows = importRows.filter(r => !r.isDup);
     const dupCount = importRows.length - newRows.length;
     const askCount = newRows.filter(r => r.needsReview).length;
-    const cardPayIgnored = importDest === 'card'
+    const creditCount = importDest === 'card'
       ? newRows.filter(r => r.direction === 'income').length : 0;
 
     document.getElementById('import-summary').innerHTML = `
       <span class="imp-stat"><span class="imp-dot new"></span>${newRows.length} novo(s)</span>
       <span class="imp-stat"><span class="imp-dot dup"></span>${dupCount} duplicado(s) ignorado(s)</span>
-      <span class="imp-stat"><span class="imp-dot ask"></span>${askCount} sem categoria (irão para a fila)</span>
-      ${cardPayIgnored ? `<span class="imp-stat" style="color:var(--text-muted)">${cardPayIgnored} pagamento(s)/estorno(s) não serão importados</span>` : ''}
+      <span class="imp-stat"><span class="imp-dot ask"></span>${askCount} sem categoria/subcategoria (irão para a fila)</span>
+      ${creditCount ? `<span class="imp-stat" style="color:var(--color-income)">${creditCount} crédito(s) do cartão (abatem a fatura)</span>` : ''}
     `;
-    const toImport = importDest === 'card' ? newRows.filter(r => r.direction === 'expense').length : newRows.length;
-    document.getElementById('btn-import-confirm').disabled = toImport === 0;
+    document.getElementById('btn-import-confirm').disabled = newRows.length === 0;
   }
+
+  /* Uma linha do preview precisa de revisão se falta categoria OU subcategoria. */
+  function rowNeedsReview(r) { return !r.classification || !r.subcategory; }
 
   function renderImportPreview() {
     const body = document.getElementById('import-preview-body');
@@ -2179,7 +2228,7 @@
             <td class="imp-desc" title="${escHtml(r.description)}">${escHtml(r.description)}<span class="imp-badge dup">duplicado</span></td>
             <td><span style="color:var(--text-muted)">${escHtml(r.establishment)}</span></td>
             <td style="text-align:right;color:var(--text-muted);white-space:nowrap">${fmtBRL(r.amount)}</td>
-            <td><span style="color:var(--text-muted)">—</span></td>
+            <td colspan="2"><span style="color:var(--text-muted)">—</span></td>
           </tr>`;
       }
       const dirCls = r.direction === 'expense' ? 'out' : 'in';
@@ -2194,7 +2243,8 @@
             <button type="button" class="imp-dir ${dirCls}" data-i="${i}" title="Clique para alternar entrada/saída">${dirLabel}</button>
             <span class="imp-amount ${dirCls}">${sign} ${fmtBRL(r.amount)}</span>
           </td>
-          <td><select class="imp-cat-select ${r.needsReview ? 'needs-pick' : ''}" data-i="${i}">${catOptionsHtml(r.classification)}</select></td>
+          <td><select class="imp-cat-select ${!r.classification ? 'needs-pick' : ''}" data-i="${i}" data-role="cat">${catOptionsHtml(r.classification)}</select></td>
+          <td><select class="imp-cat-select ${!r.subcategory ? 'needs-pick' : ''}" data-i="${i}" data-role="sub">${subcatOptionsHtml(r.classification, r.subcategory)}</select></td>
         </tr>`;
     }).join('');
 
@@ -2202,14 +2252,29 @@
     body.querySelectorAll('.imp-edit').forEach(inp => {
       inp.addEventListener('input', () => { importRows[+inp.dataset.i][inp.dataset.f] = inp.value; });
     });
-    // Categoria
-    body.querySelectorAll('.imp-cat-select').forEach(sel => {
+    // Categoria (nível 1) — ao mudar, repopula a subcategoria daquela categoria
+    body.querySelectorAll('.imp-cat-select[data-role="cat"]').forEach(sel => {
       sel.addEventListener('change', () => {
         const i = +sel.dataset.i;
         importRows[i].classification = sel.value;
-        importRows[i].needsReview = !sel.value;
+        importRows[i].subcategory = '';
+        const subSel = body.querySelector(`.imp-cat-select[data-role="sub"][data-i="${i}"]`);
+        subSel.innerHTML = subcatOptionsHtml(sel.value, '');
+        subSel.classList.add('needs-pick');
+        importRows[i].needsReview = rowNeedsReview(importRows[i]);
         sel.classList.toggle('needs-pick', !sel.value);
-        sel.closest('tr').classList.toggle('imp-ask', !sel.value);
+        sel.closest('tr').classList.toggle('imp-ask', importRows[i].needsReview);
+        updateImportSummary();
+      });
+    });
+    // Subcategoria (nível 2)
+    body.querySelectorAll('.imp-cat-select[data-role="sub"]').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const i = +sel.dataset.i;
+        importRows[i].subcategory = sel.value;
+        importRows[i].needsReview = rowNeedsReview(importRows[i]);
+        sel.classList.toggle('needs-pick', !sel.value);
+        sel.closest('tr').classList.toggle('imp-ask', importRows[i].needsReview);
         updateImportSummary();
       });
     });
@@ -2234,9 +2299,8 @@
 
   async function confirmImport() {
     const destId = importDestId();
-    let toInsert = importRows.filter(r => !r.isDup);
-    // Cartão: só compras (positivo) — pagamentos/estornos são tratados na tela de Faturas
-    if (importDest === 'card') toInsert = toInsert.filter(r => r.direction === 'expense');
+    const toInsert = importRows.filter(r => !r.isDup);
+    // Cartão: compras E créditos são importados (o crédito abate a fatura e devolve limite).
 
     if (toInsert.length === 0) { toast('Nada novo para importar.', 'info'); return; }
 
@@ -2277,6 +2341,7 @@
       description:       r.description,
       establishment:     r.establishment || null,
       classification:    r.needsReview ? ImportParser.NEUTRAL_CLASSIFICATION : r.classification,
+      subcategory:       r.needsReview ? null : (r.subcategory || null),
       payment_method:    r.direction === 'income' ? 'transferencia' : 'debito',
       source,
       import_fingerprint: r.fingerprint,
@@ -2303,12 +2368,14 @@
         account_id:        card.account_id,
         credit_card_id:    card.id,
         invoice_id:        inv ? inv.id : null,
-        direction:         'expense',
+        // Compra = saída (aumenta a fatura); crédito/estorno = entrada (abate a fatura, devolve limite).
+        direction:         r.direction,
         amount:            r.amount,
         date:              r.date,
         description:       r.description,
         establishment:     r.establishment || null,
         classification:    r.needsReview ? ImportParser.NEUTRAL_CLASSIFICATION : r.classification,
+        subcategory:       r.needsReview ? null : (r.subcategory || null),
         payment_method:    'credito',
         source,
         import_fingerprint: r.fingerprint,
@@ -2356,7 +2423,7 @@
       .eq('needs_category_review', true)
       .order('date', { ascending: false });
     if (error) { toast('Erro ao carregar a fila: ' + error.message, 'error'); return; }
-    reviewItems = (data || []).map(t => ({ ...t, _desc: t.description, _est: t.establishment || '' }));
+    reviewItems = (data || []).map(t => ({ ...t, _desc: t.description, _est: t.establishment || '', _cat: '', _sub: '' }));
     const body = document.getElementById('review-body');
     body.innerHTML = reviewItems.map((t, i) => {
       const valCls = t.direction === 'expense' ? 'imp-val-out' : 'imp-val-in';
@@ -2367,41 +2434,57 @@
           <td><input class="imp-edit" data-i="${i}" data-f="_desc" value="${escHtml(t._desc)}" /></td>
           <td><input class="imp-edit" data-i="${i}" data-f="_est" value="${escHtml(t._est)}" /></td>
           <td class="${valCls}" style="text-align:right;white-space:nowrap">${sign} ${fmtBRL(t.amount)}</td>
-          <td><select class="imp-cat-select needs-pick" data-i="${i}">${catOptionsHtml('')}</select></td>
+          <td><select class="imp-cat-select needs-pick" data-i="${i}" data-role="cat">${catOptionsHtml('')}</select></td>
+          <td><select class="imp-cat-select needs-pick" data-i="${i}" data-role="sub">${subcatOptionsHtml('', '')}</select></td>
         </tr>`;
     }).join('');
     body.querySelectorAll('.imp-edit').forEach(inp => {
       inp.addEventListener('input', () => { reviewItems[+inp.dataset.i][inp.dataset.f] = inp.value; });
     });
-    body.querySelectorAll('.imp-cat-select').forEach(sel => {
-      sel.addEventListener('change', () => sel.classList.toggle('needs-pick', !sel.value));
+    body.querySelectorAll('.imp-cat-select[data-role="cat"]').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const i = +sel.dataset.i;
+        reviewItems[i]._cat = sel.value;
+        reviewItems[i]._sub = '';
+        const subSel = body.querySelector(`.imp-cat-select[data-role="sub"][data-i="${i}"]`);
+        subSel.innerHTML = subcatOptionsHtml(sel.value, '');
+        subSel.classList.add('needs-pick');
+        sel.classList.toggle('needs-pick', !sel.value);
+      });
+    });
+    body.querySelectorAll('.imp-cat-select[data-role="sub"]').forEach(sel => {
+      sel.addEventListener('change', () => {
+        reviewItems[+sel.dataset.i]._sub = sel.value;
+        sel.classList.toggle('needs-pick', !sel.value);
+      });
     });
     openModal('modal-review');
   }
 
   async function saveReview() {
-    const selects = document.querySelectorAll('#review-body .imp-cat-select');
     const updates = [];
-    selects.forEach(sel => {
-      const val = sel.value;
-      if (val) {
-        const it = reviewItems[+sel.dataset.i];
+    let incomplete = 0;
+    reviewItems.forEach(it => {
+      if (it._cat && it._sub) {
         updates.push({
           id: it.id,
-          classification: val,
+          classification: it._cat,
+          subcategory: it._sub,
           description: (it._desc || '').trim() || it.description,
           establishment: (it._est || '').trim() || null,
         });
+      } else if (it._cat || it._sub) {
+        incomplete++;
       }
     });
-    if (updates.length === 0) { toast('Escolha ao menos uma categoria.', 'info'); return; }
+    if (updates.length === 0) { toast('Escolha categoria E subcategoria de ao menos um item.', 'info'); return; }
 
     const btn = document.getElementById('btn-review-save');
     btn.classList.add('btn-loading'); btn.disabled = true;
     let failed = 0;
     for (const u of updates) {
       const { error } = await _supabase.from('transactions')
-        .update({ classification: u.classification, description: u.description, establishment: u.establishment, needs_category_review: false })
+        .update({ classification: u.classification, subcategory: u.subcategory, description: u.description, establishment: u.establishment, needs_category_review: false })
         .eq('id', u.id);
       if (error) failed++;
     }
@@ -2409,7 +2492,7 @@
 
     if (failed) { toast(`${failed} não puderam ser salvos.`, 'error'); return; }
     closeModal('modal-review');
-    toast(`${updates.length} categoria(s) confirmada(s)!`, 'success');
+    toast(`${updates.length} confirmado(s)!` + (incomplete ? ` (${incomplete} faltou subcategoria)` : ''), 'success');
     await loadTransactions();
   }
 
@@ -2561,7 +2644,7 @@
       const avail = cardAvailableLimit(card);
       hint.style.display = '';
       hint.style.color = avail < 0 ? 'var(--color-expense)' : 'var(--text-muted)';
-      hint.textContent = `Limite disponível: ${fmtBRL(avail)} de ${fmtBRL(card.credit_limit)}`;
+      hint.textContent = `Limite disponível: ${fmtBRL(avail)} de ${fmtBRL(cardEffectiveLimit(card))}`;
     } else {
       ownerGroup.style.display = 'none';
       instGroup.style.display = 'none';
@@ -2608,7 +2691,7 @@
       const ownerLabel = owner ? owner.name.split(' ')[0] : 'Casal';
       const avail = cardAvailableLimit(card);
       const limitLabel = card.credit_limit != null
-        ? `${fmtBRL(card.credit_limit)} (disp. ${fmtBRL(avail)})`
+        ? `${fmtBRL(cardEffectiveLimit(card))} (disp. ${fmtBRL(avail)})`
         : '—';
       return `
         <div class="card-list-item" data-card-id="${card.id}">
@@ -2792,8 +2875,10 @@
     /* is_ignored fora dos KPIs: pagamentos de fatura aparecem no extrato mas o
        gasto já foi contado nas compras do cartão (contar de novo duplicaria) */
     txs = txs.filter(t => !t.is_ignored);
-    const income  = txs.filter(t => t.direction === 'income').reduce((s,t) => s + Number(t.amount), 0);
-    const expense = txs.filter(t => t.direction === 'expense').reduce((s,t) => s + Number(t.amount), 0);
+    /* Crédito no cartão (estorno/reembolso) não é renda: abate o gasto do mês. */
+    const cardCredit = txs.filter(t => t.direction === 'income' && t.credit_card_id).reduce((s,t) => s + Number(t.amount), 0);
+    const income  = txs.filter(t => t.direction === 'income' && !t.credit_card_id).reduce((s,t) => s + Number(t.amount), 0);
+    const expense = txs.filter(t => t.direction === 'expense').reduce((s,t) => s + Number(t.amount), 0) - cardCredit;
     const invest  = txs.filter(t => t.classification === 'Investimentos').reduce((s,t) => s + Number(t.amount), 0);
     const balance = income - expense;
 
@@ -2966,6 +3051,7 @@
     document.getElementById('tx-date').value         = tx.date || '';
     document.getElementById('tx-place').value        = tx.establishment || '';
     document.getElementById('tx-cat').value          = tx.classification || 'Despesas obrigatórias';
+    populateSubcatSelect(document.getElementById('tx-subcat'), document.getElementById('tx-cat').value, tx.subcategory || null);
     document.getElementById('tx-method').value       = tx.payment_method || 'pix';
     document.getElementById('tx-installments').value = tx.total_installments || 1;
 
@@ -3008,6 +3094,7 @@
     document.getElementById('tx-date').value         = todayISO();
     document.getElementById('tx-place').value        = '';
     document.getElementById('tx-cat').value          = dir === 'income' ? 'Renda' : 'Despesas obrigatórias';
+    populateSubcatSelect(document.getElementById('tx-subcat'), document.getElementById('tx-cat').value, null);
     document.getElementById('tx-method').value       = 'pix';
     document.getElementById('tx-installments').value = 1;
     // Destrava campos que a edição de compra no cartão pode ter desabilitado
@@ -3017,6 +3104,8 @@
     document.getElementById('tx-position-name').value = '';
     document.getElementById('tx-position-tipo').value = '';
     document.getElementById('tx-position-vencimento').value = '';
+    document.getElementById('tx-position-liberates-limit').checked = false;
+    document.getElementById('tx-position-card-group').style.display = 'none';
     refreshCardOptions();
     refreshInvestmentOptions();
   }
@@ -3034,6 +3123,7 @@
 
   document.getElementById('tx-cat').addEventListener('change', () => {
     const cat = document.getElementById('tx-cat').value;
+    populateSubcatSelect(document.getElementById('tx-subcat'), cat, null);
     if (isInvestmentCategory(cat) && !editingId) {
       // Transferência para investimento é sempre uma saída do saldo disponível (D1)
       selectedDir = 'expense';
@@ -3046,6 +3136,10 @@
   document.getElementById('tx-investment-position').addEventListener('change', () => {
     document.getElementById('tx-new-position-group').style.display =
       document.getElementById('tx-investment-position').value === '' ? '' : 'none';
+  });
+
+  document.getElementById('tx-position-liberates-limit').addEventListener('change', (e) => {
+    document.getElementById('tx-position-card-group').style.display = e.target.checked ? '' : 'none';
   });
 
   document.getElementById('modal-tx-save').addEventListener('click', saveTx);
@@ -3064,6 +3158,7 @@
     const date    = document.getElementById('tx-date').value;
     const place   = document.getElementById('tx-place').value.trim();
     const cat     = document.getElementById('tx-cat').value;
+    const subcat  = document.getElementById('tx-subcat').value;
     const method  = document.getElementById('tx-method').value;
     const cardId  = document.getElementById('tx-card-group').style.display !== 'none'
       ? document.getElementById('tx-card').value : '';
@@ -3077,6 +3172,8 @@
     if (!amount || amount <= 0) { toast('Informe um valor válido.', 'error'); return; }
     if (!desc)                  { toast('Informe uma descrição.', 'error'); return; }
     if (!date)                  { toast('Informe a data.', 'error'); return; }
+    // Subcategoria obrigatória (Ajuste 3) — exceto na transferência interna p/ investimento
+    if (!isInvestmentCategory(cat) && !subcat) { toast('Escolha a subcategoria.', 'error'); return; }
 
     const saveBtn = document.getElementById('modal-tx-save');
     saveBtn.classList.add('btn-loading');
@@ -3103,14 +3200,22 @@
           toast('Informe o nome da nova posição de investimento.', 'error');
           return;
         }
+        const liberatesLimit = document.getElementById('tx-position-liberates-limit').checked;
+        const linkedCardId = liberatesLimit ? document.getElementById('tx-position-card').value : null;
+        if (liberatesLimit && !linkedCardId) {
+          done();
+          toast('Escolha o cartão que este investimento libera limite.', 'error');
+          return;
+        }
         const { data: newPos, error: posErr } = await _supabase
           .from('investment_positions')
           .insert({
             household_id: householdId,
             account_id:   accountId,
             name:         posName,
-            tipo:         document.getElementById('tx-position-tipo').value.trim() || null,
+            tipo:         liberatesLimit ? 'Libera limite do cartão' : (document.getElementById('tx-position-tipo').value.trim() || null),
             vencimento:   document.getElementById('tx-position-vencimento').value || null,
+            linked_card_id: linkedCardId,
           })
           .select()
           .single();
@@ -3150,6 +3255,7 @@
           description:    desc,
           establishment:  place || null,
           classification: cat,
+          subcategory:    subcat || null,
           member_id:      document.getElementById('tx-owner').value || null,
         };
       } else {
@@ -3163,6 +3269,7 @@
           date,
           establishment:  place || null,
           classification: cat,
+          subcategory:    subcat || null,
           payment_method: method,
         };
       }
@@ -3188,6 +3295,7 @@
         date,
         establishment:  place || null,
         classification: cat,
+        subcategory:    subcat || null,
         payment_method: method,
       });
       done();
@@ -3246,6 +3354,7 @@
         description:          desc,
         establishment:        place || null,
         classification:       cat,
+        subcategory:          subcat || null,
         payment_method:       'credito',
         is_installment:       n > 1,
         installment_num:      k + 1,

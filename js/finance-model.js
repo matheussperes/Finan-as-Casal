@@ -176,6 +176,56 @@
     return round2(currentTotal * Math.pow(1 + rate, months));
   }
 
+  /**
+   * Resumo dos investimentos de uma conta/casal (Ajuste 2 — card de
+   * investimentos). Recebe as posições e a data de hoje (injetada, testável):
+   *  - totalInvested   : soma dos valores aplicados
+   *  - totalAvailable  : soma do valor atual (aplicado + rendimento) das
+   *                      posições líquidas (sem vencimento ou já vencidas)
+   *  - total12m        : soma da projeção de cada posição 12 meses à frente
+   *  - totalAtMaturity : soma do valor projetado até o vencimento de cada
+   *                      posição (sem vencimento entra pelo valor atual)
+   */
+  function investmentSummary(positions, todayISO) {
+    let totalInvested = 0, totalAvailable = 0, total12m = 0, totalAtMaturity = 0;
+    for (const p of positions || []) {
+      const aplicado = Number(p.valor_aplicado) || 0;
+      const rend = Number(p.rendimento_acumulado) || 0;
+      const rate = Number(p.taxa) || 0;
+      const current = aplicado + rend;
+      totalInvested += aplicado;
+
+      const matured = !p.vencimento || monthsBetween(todayISO, p.vencimento) <= 0;
+      if (matured) totalAvailable += current;
+
+      total12m += current * Math.pow(1 + rate, 12);
+
+      if (p.vencimento) {
+        const m = monthsBetween(todayISO, p.vencimento);
+        totalAtMaturity += m > 0 ? current * Math.pow(1 + rate, m) : current;
+      } else {
+        totalAtMaturity += current;
+      }
+    }
+    return {
+      totalInvested: round2(totalInvested),
+      totalAvailable: round2(totalAvailable),
+      total12m: round2(total12m),
+      totalAtMaturity: round2(totalAtMaturity),
+    };
+  }
+
+  /**
+   * Limite efetivo de um cartão (Ajuste 2): limite base + soma dos valores
+   * aplicados nas posições de investimento do tipo "libera limite" vinculadas
+   * a esse cartão. Aplicar aumenta o limite; resgatar (reduzir valor_aplicado)
+   * reduz o limite na mesma proporção.
+   */
+  function effectiveCardLimit(baseLimit, linkedPositions) {
+    const extra = (linkedPositions || []).reduce((s, p) => s + (Number(p.valor_aplicado) || 0), 0);
+    return round2((Number(baseLimit) || 0) + extra);
+  }
+
   /* ══════════════════════════════════════════════════════════════════════
      D3 / PRJ-01..03 — Projetos como eventos patrimoniais futuros,
      dentro do mesmo pool de independência.
@@ -363,6 +413,8 @@
     monthsBetween,
     annualizedRate,
     investmentProjection,
+    investmentSummary,
+    effectiveCardLimit,
     PROJECT_TIPOS,
     projectKind,
     annualToMonthlyRate,
