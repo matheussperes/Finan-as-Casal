@@ -179,34 +179,19 @@
     .cc-widget .ccw-bar-fill.warn { background: #fbbf24; }
     .cc-widget .ccw-bar-fill.over { background: #fb7185; }
 
-    /* ─── Card de Investimentos (Ajuste 2) — mesmo estilo do card do cartão ─── */
-    .invest-card {
-      background: linear-gradient(135deg, var(--slate-900), var(--slate-800));
-      border-radius: var(--radius-lg);
-      padding: 18px 20px;
-      color: white;
-      margin-bottom: 16px;
-      cursor: pointer;
-      border: none;
-      width: 100%;
-      text-align: left;
-      font: inherit;
-      transition: transform var(--transition);
-    }
-    .invest-card:hover { transform: translateY(-2px); }
+    /* ─── Card de Investimentos — mesmo formato/estilo do widget de cartão
+       (.cc-widget + .cc-widget-btn), lado a lado com os cartões no mesmo
+       grid. Clicar abre a página de investimentos daquela conta. ─── */
     .invest-card-header {
       display: flex; align-items: center; justify-content: space-between;
     }
     .invest-card-title { font-weight: 700; font-size: .9375rem; display: flex; align-items: center; gap: 8px; }
-    .invest-card-chevron { transition: transform .2s; color: rgba(255,255,255,.6); }
-    .invest-card.expanded .invest-card-chevron { transform: rotate(180deg); }
+    .invest-card-arrow { color: rgba(255,255,255,.6); }
     .invest-card-stats {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 14px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-top: 12px;
     }
-    .invest-card-stat { }
     .invest-card-stat-label { font-size: .6875rem; color: rgba(255,255,255,.6); margin-bottom: 3px; }
-    .invest-card-stat-value { font-family: var(--font-display); font-weight: 700; font-size: .9375rem; color: white; }
-    @media (max-width: 720px) { .invest-card-stats { grid-template-columns: 1fr 1fr; } }
+    .invest-card-stat-value { font-family: var(--font-display); font-weight: 700; font-size: .875rem; color: white; }
     .table-card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -584,68 +569,29 @@
           </div>
         </div>
 
+        <!-- Cartões vinculados + card de Investimentos (mesmo formato/grid dos
+             cartões, lado a lado). Clicar no card de Investimentos abre a
+             página de investimentos desta conta (renderDetail monta os dois
+             juntos em #detail-cards). -->
         <div class="cc-widgets" id="detail-cards"></div>
 
-        <!-- Ajuste 2 — card de Investimentos (estilo do card do cartão), com
-             4 resumos em linha. Clicar expande a lista de posições abaixo,
-             na mesma área onde ficam os lançamentos. -->
-        <button class="invest-card" id="invest-card" onclick="toggleInvestCard()">
-          <div class="invest-card-header">
-            <div class="invest-card-title">📈 Investimentos</div>
-            <svg class="invest-card-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
+        <div class="table-card">
+          <div class="table-header-row">
+            <span class="table-count" id="detail-count">—</span>
           </div>
-          <div class="invest-card-stats">
-            <div class="invest-card-stat">
-              <div class="invest-card-stat-label">Total investido</div>
-              <div class="invest-card-stat-value" id="invest-stat-total">—</div>
-            </div>
-            <div class="invest-card-stat">
-              <div class="invest-card-stat-label">Disponível p/ saque</div>
-              <div class="invest-card-stat-value" id="invest-stat-available">—</div>
-            </div>
-            <div class="invest-card-stat">
-              <div class="invest-card-stat-label">Em 12 meses</div>
-              <div class="invest-card-stat-value" id="invest-stat-12m">—</div>
-            </div>
-            <div class="invest-card-stat">
-              <div class="invest-card-stat-label">Nos vencimentos</div>
-              <div class="invest-card-stat-value" id="invest-stat-maturity">—</div>
-            </div>
-          </div>
-        </button>
-
-        <div id="detail-lancamentos-panel">
-          <div class="table-card">
-            <div class="table-header-row">
-              <span class="table-count" id="detail-count">—</span>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th style="width:90px">Data</th>
-                  <th>Descrição</th>
-                  <th style="width:160px">Pagamento</th>
-                  <th style="width:130px;text-align:right">Valor</th>
-                </tr>
-              </thead>
-              <tbody id="detail-tbody"></tbody>
-            </table>
-            <div id="detail-empty" class="empty-table" style="display:none">
-              Nenhum lançamento nesta conta neste mês.
-            </div>
-          </div>
-        </div>
-
-        <div id="detail-investimentos-panel" style="display:none">
-          <div class="panel-section">
-            <div class="panel-section-header">
-              <span class="panel-section-title">Investimentos nesta conta</span>
-              <span style="font-size:.75rem;color:var(--text-muted)">Cadastre em Lançamentos → categoria Investimentos</span>
-            </div>
-            <div class="panel-list" id="detail-positions-list"></div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width:90px">Data</th>
+                <th>Descrição</th>
+                <th style="width:160px">Pagamento</th>
+                <th style="width:130px;text-align:right">Valor</th>
+              </tr>
+            </thead>
+            <tbody id="detail-tbody"></tbody>
+          </table>
+          <div id="detail-empty" class="empty-table" style="display:none">
+            Nenhum lançamento nesta conta neste mês.
           </div>
         </div>
       </div>
@@ -707,7 +653,7 @@
             Voltar
           </button>
           <div>
-            <h1 style="font-size:1.25rem;font-weight:800;color:var(--text-primary)">Investimentos</h1>
+            <h1 style="font-size:1.25rem;font-weight:800;color:var(--text-primary)" id="investments-title">Investimentos</h1>
             <p style="font-size:.8125rem;color:var(--text-muted)" id="investments-sub">—</p>
           </div>
         </div>
@@ -1000,8 +946,8 @@
   let viewingAssetId     = null;
   let viewingLoanId      = null;
   let pendingConfirmAction = null;
-  let detailSubtab       = 'lancamentos'; // 'lancamentos' | 'investimentos' (PAT-05)
   let editingPositionId  = null;          // posição sendo editada (PAT-07)
+  let investmentsAccountId = null;        // conta cujo card "Investimentos" abriu a view (PAT-07); null = visão geral
   let cardDetailId       = null;          // cartão aberto no PAT-06
   let cardDetailTab      = 'atual';       // 'atual' | 'gasto' | 'limite'
   let cardDetailPeriod   = null;          // period (YYYY-MM) pré-selecionado via deep-link (LAN-02), ou null = todos
@@ -1459,7 +1405,6 @@
   function openDetail(accountId) {
     detailAccountId = accountId;
     detailDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    setDetailSubtab('lancamentos');
     document.getElementById('overview-view').style.display = 'none';
     document.getElementById('investments-view').style.display = 'none';
     document.getElementById('card-detail-view').style.display = 'none';
@@ -1516,9 +1461,11 @@
     document.getElementById('detail-income').textContent  = fmtBRL(income);
     document.getElementById('detail-expense').textContent = fmtBRL(expense);
 
-    /* Cartões vinculados à conta */
+    /* Cartões vinculados à conta + card de Investimentos, lado a lado no
+       mesmo grid (mesmo formato retangular — .cc-widget). O card de
+       Investimentos é clicável e abre a página de investimentos da conta. */
     const cards = allCreditCards.filter(c => c.account_id === acc.id);
-    document.getElementById('detail-cards').innerHTML = cards.map(c => {
+    const cardsHtml = cards.map(c => {
       const limit = cardEffectiveLimit(c);
       const avail = cardAvailableLimit(c);
       const used = limit - avail;
@@ -1536,6 +1483,7 @@
           <div class="ccw-row" style="margin-top:8px"><span>Fecha dia ${c.closing_day} · vence dia ${c.due_day}</span></div>
         </button>`;
     }).join('');
+    document.getElementById('detail-cards').innerHTML = cardsHtml + investCardHtml(acc);
 
     /* Tabela do mês */
     const tbody = document.getElementById('detail-tbody');
@@ -1545,9 +1493,6 @@
     if (monthTx.length === 0) {
       tbody.innerHTML = '';
       empty.style.display = 'block';
-      // Sem lançamentos no mês, mas o card de Investimentos (Ajuste 2) precisa
-      // renderizar de qualquer forma — não é dependente do mês visível.
-      renderDetailPositions(acc);
       return;
     }
     empty.style.display = 'none';
@@ -1572,31 +1517,42 @@
           </td>
         </tr>`;
     }).join('');
-
-    renderDetailPositions(acc);
   }
 
-  /* ── Ajuste 2 — card de Investimentos: clicar expande a lista de posições
-     na mesma área onde ficam os lançamentos (substitui a antiga sub-aba). ── */
-  function setDetailSubtab(tab) {
-    detailSubtab = tab;
-    document.getElementById('invest-card').classList.toggle('expanded', tab === 'investimentos');
-    document.getElementById('detail-lancamentos-panel').style.display = tab === 'lancamentos' ? '' : 'none';
-    document.getElementById('detail-investimentos-panel').style.display = tab === 'investimentos' ? '' : 'none';
-  }
-  function toggleInvestCard() {
-    setDetailSubtab(detailSubtab === 'investimentos' ? 'lancamentos' : 'investimentos');
-  }
-
-  function renderDetailPositions(acc) {
+  /* Card de Investimentos da conta — mesmo formato do .cc-widget de cartão,
+     renderizado lado a lado com eles em #detail-cards. Clicar abre a página
+     de investimentos (PAT-07) filtrada para esta conta. */
+  function investCardHtml(acc) {
     const positions = allInvestmentPositions.filter(p => p.account_id === acc.id);
-    document.getElementById('detail-positions-list').innerHTML = renderPositionRows(positions, { showAccount: false });
-
     const summary = FinanceModel.investmentSummary(positions, todayISO());
-    document.getElementById('invest-stat-total').textContent     = fmtBRL(summary.totalInvested);
-    document.getElementById('invest-stat-available').textContent = fmtBRL(summary.totalAvailable);
-    document.getElementById('invest-stat-12m').textContent        = fmtBRL(summary.total12m);
-    document.getElementById('invest-stat-maturity').textContent   = fmtBRL(summary.totalAtMaturity);
+    return `
+      <button class="cc-widget cc-widget-btn" onclick="openInvestmentsView('${acc.id}')">
+        <div class="invest-card-header">
+          <div class="ccw-name">📈 Investimentos</div>
+          <svg class="invest-card-arrow" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m9 18 6-6-6-6"/>
+          </svg>
+        </div>
+        <div class="invest-card-stats">
+          <div>
+            <div class="invest-card-stat-label">Total investido</div>
+            <div class="invest-card-stat-value">${fmtBRL(summary.totalInvested)}</div>
+          </div>
+          <div>
+            <div class="invest-card-stat-label">Disponível p/ saque</div>
+            <div class="invest-card-stat-value">${fmtBRL(summary.totalAvailable)}</div>
+          </div>
+          <div>
+            <div class="invest-card-stat-label">Em 12 meses</div>
+            <div class="invest-card-stat-value">${fmtBRL(summary.total12m)}</div>
+          </div>
+          <div>
+            <div class="invest-card-stat-label">Nos vencimentos</div>
+            <div class="invest-card-stat-value">${fmtBRL(summary.totalAtMaturity)}</div>
+          </div>
+        </div>
+      </button>`;
   }
 
   /* ══════════════════════════════════════════════
@@ -1762,7 +1718,11 @@
   /* ══════════════════════════════════════════════
      PAT-07 — INVESTIMENTOS (visão geral, household-wide)
      ══════════════════════════════════════════════ */
-  function openInvestmentsView() {
+  /* accountId opcional: quando vem do card "Investimentos" dentro do
+     detalhe de uma conta, a view abre já filtrada para aquela conta, e
+     "Voltar" retorna para o detalhe da conta em vez da visão geral. */
+  function openInvestmentsView(accountId = null) {
+    investmentsAccountId = accountId;
     document.getElementById('overview-view').style.display = 'none';
     document.getElementById('detail-view').style.display = 'none';
     document.getElementById('card-detail-view').style.display = 'none';
@@ -1772,13 +1732,19 @@
 
   document.getElementById('btn-back-investments').addEventListener('click', () => {
     document.getElementById('investments-view').style.display = 'none';
-    document.getElementById('overview-view').style.display = '';
-    renderSummary();
-    renderExpansion();
+    if (investmentsAccountId) {
+      openDetail(investmentsAccountId);
+    } else {
+      document.getElementById('overview-view').style.display = '';
+      renderSummary();
+      renderExpansion();
+    }
+    investmentsAccountId = null;
   });
 
   function renderInvestmentsView() {
-    const accounts = allAccounts.filter(a => accountBucket(a) === activeTab);
+    const scopedAccount = investmentsAccountId ? allAccounts.find(a => a.id === investmentsAccountId) : null;
+    const accounts = scopedAccount ? [scopedAccount] : allAccounts.filter(a => accountBucket(a) === activeTab);
     const positions = allInvestmentPositions.filter(p => accounts.some(a => a.id === p.account_id));
 
     const totalAplicado = positions.reduce((s, p) => s + Number(p.valor_aplicado || 0), 0);
@@ -1791,8 +1757,11 @@
       todayISO: todayISO(),
     }), 0);
 
-    document.getElementById('investments-sub').textContent =
-      `${positions.length} posiç${positions.length !== 1 ? 'ões' : 'ão'} nesta aba`;
+    document.getElementById('investments-title').textContent =
+      scopedAccount ? `Investimentos — ${scopedAccount.name}` : 'Investimentos';
+    document.getElementById('investments-sub').textContent = scopedAccount
+      ? `${positions.length} posiç${positions.length !== 1 ? 'ões' : 'ão'} nesta conta`
+      : `${positions.length} posiç${positions.length !== 1 ? 'ões' : 'ão'} nesta aba`;
 
     document.getElementById('investments-stats').innerHTML = `
       <div class="kpi-card-v2 balance">
@@ -1812,7 +1781,7 @@
       </div>
     `;
 
-    document.getElementById('investments-positions-list').innerHTML = renderPositionRows(positions, { showAccount: true });
+    document.getElementById('investments-positions-list').innerHTML = renderPositionRows(positions, { showAccount: !scopedAccount });
   }
 
   /* ══════════════════════════════════════════════

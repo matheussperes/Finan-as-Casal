@@ -26,6 +26,12 @@ test('parseAmount cobre formatos BR e internacionais', () => {
   assert.equal(P.parseAmount(''), null);
 });
 
+test('parseAmount aceita o sinal de menos tipográfico (−), não só o hífen ASCII', () => {
+  assert.equal(P.parseAmount('−45,00'), -45);
+  assert.equal(P.parseAmount('−12,30'), -12.3);
+  assert.equal(P.parseAmount('R$ −180,55'), -180.55);
+});
+
 /* ── datas ── */
 test('parseOFXDate aceita data pura, com hora e com timezone', () => {
   assert.equal(P.parseOFXDate('20260715'), '2026-07-15');
@@ -89,12 +95,22 @@ test('parseCSV: extrato estilo Nubank com , e ponto decimal + campo com aspas', 
   assert.match(r.transactions[3].description, /Maria, Escola/);
 });
 
-test('parseCSV: colunas separadas de débito/crédito', () => {
+test('parseCSV: colunas separadas de débito/crédito (direção inequívoca, amount sempre positivo)', () => {
   const csv = 'Data;Historico;Debito;Credito\n05/07/2026;CONTA DE LUZ;180,55;\n06/07/2026;PIX RECEBIDO;;300,00\n';
   const r = P.parseCSV(csv);
   assert.equal(r.transactions.length, 2);
-  assert.equal(r.transactions[0].amount, -180.55);
+  assert.equal(r.transactions[0].amount, 180.55);
+  assert.equal(r.transactions[0].knownDirection, 'expense');
   assert.equal(r.transactions[1].amount, 300);
+  assert.equal(r.transactions[1].knownDirection, 'income');
+});
+
+test('parseCSV: crédito de cartão com sinal de menos tipográfico (−) é lido como negativo', () => {
+  const csv = 'Data;Estabelecimento;Valor\n02/07/2026;IFOOD *RESTAURANTE;56,90\n12/07/2026;ESTORNO COMPRA;−45,00\n';
+  const r = P.parseCSV(csv);
+  assert.equal(r.transactions.length, 2);
+  assert.equal(r.transactions[0].amount, 56.9);
+  assert.equal(r.transactions[1].amount, -45);
 });
 
 test('parseCSV: sem cabeçalho, infere colunas pelo conteúdo', () => {
