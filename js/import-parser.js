@@ -10,6 +10,11 @@
    - amount : Number COM SINAL (negativo = saída no extrato de conta;
               em fatura de cartão, positivo = compra). Quem decide a
               direction final é a página, conforme o destino.
+   - knownDirection: 'expense'|'income'|null — quando o CSV tem colunas
+              Débito/Crédito separadas, a direção já é inequívoca (não
+              depende da origem) e vem pré-computada aqui; amount nesse
+              caso é sempre positivo. null quando a direção depende da
+              convenção por origem (coluna única de valor com sinal, ou OFX).
    - description: texto original limpo (colapsa espaços)
    ══════════════════════════════════════════════════════════════════════ */
 (function (root, factory) {
@@ -76,7 +81,8 @@
     if (!s) return null;
     let negative = false;
     if (/^\(.*\)$/.test(s)) { negative = true; s = s.slice(1, -1); }
-    if (/^-/.test(s)) { negative = true; s = s.slice(1); }
+    // aceita hífen ASCII e os travessões/sinal de menos tipográficos (−, –, —)
+    if (/^[-‐-―−]/.test(s)) { negative = true; s = s.slice(1); }
     if (/^\+/.test(s)) { s = s.slice(1); }
     s = s.replace(/\s/g, '');
     if (!/^[\d.,]+$/.test(s)) return null;
@@ -300,11 +306,16 @@
     rows.forEach((r, idx) => {
       const date = parseCSVDate(r[colMap.date], dmOrder);
       let amount = null;
+      // Colunas Débito/Crédito separadas são inequívocas (débito = saída,
+      // crédito = entrada) independente da origem (conta ou cartão) — ao
+      // contrário de uma única coluna de valor com sinal, cuja leitura
+      // depende da convenção por origem decidida na tela (Ajuste 1).
+      let knownDirection = null;
       if (colMap.debit !== undefined || colMap.credit !== undefined) {
         const deb = colMap.debit !== undefined ? parseAmount(r[colMap.debit]) : null;
         const cred = colMap.credit !== undefined ? parseAmount(r[colMap.credit]) : null;
-        if (deb !== null && deb !== 0) amount = -Math.abs(deb);
-        else if (cred !== null && cred !== 0) amount = Math.abs(cred);
+        if (deb !== null && deb !== 0) { amount = Math.abs(deb); knownDirection = 'expense'; }
+        else if (cred !== null && cred !== 0) { amount = Math.abs(cred); knownDirection = 'income'; }
       } else if (colMap.amount !== undefined && colMap.amount >= 0) {
         amount = parseAmount(r[colMap.amount]);
       }
@@ -318,7 +329,7 @@
         errors.push(`Linha ${idx + (hasHeader ? 2 : 1)} ignorada (data/valor/descrição não reconhecidos).`);
         return;
       }
-      transactions.push({ date, amount, description, establishment, fitid: extId || null, type: null });
+      transactions.push({ date, amount, description, establishment, fitid: extId || null, type: null, knownDirection });
     });
 
     return { kind: 'csv', transactions, errors, delimiter, hasHeader, colMap, dmOrder };
@@ -345,7 +356,10 @@
   function fingerprint(tx, destId, seen) {
     let base;
     if (tx.fitid) base = `id:${destId}:${tx.fitid}`;
-    else base = `tx:${destId}:${tx.date}:${Math.abs(tx.amount).toFixed(2)}:${tx.amount < 0 ? 'd' : 'c'}:${normalizeKey(tx.description)}`;
+    else {
+      const isDebit = tx.knownDirection ? tx.knownDirection === 'expense' : tx.amount < 0;
+      base = `tx:${destId}:${tx.date}:${Math.abs(tx.amount).toFixed(2)}:${isDebit ? 'd' : 'c'}:${normalizeKey(tx.description)}`;
+    }
     if (seen) {
       const n = (seen.get(base) || 0) + 1;
       seen.set(base, n);

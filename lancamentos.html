@@ -2171,8 +2171,14 @@
       /* Convenção de sinal POR ORIGEM (Ajuste 1):
          - Conta corrente: negativo = saída; positivo/"+" = entrada.
          - Cartão: negativo = crédito/estorno (entrada, abate a fatura e devolve
-           limite); positivo/sem sinal = compra (saída, aumenta fatura/consome limite). */
-      const isExpense = importDest === 'card' ? r.amount >= 0 : r.amount < 0;
+           limite); positivo/sem sinal = compra (saída, aumenta fatura/consome limite).
+         CSVs com colunas Débito/Crédito separadas já vêm com a direção
+         inequívoca (r.knownDirection) — nesse caso não se aplica a
+         convenção por origem, que só existe para resolver o sinal de uma
+         única coluna de valor. */
+      const isExpense = r.knownDirection
+        ? r.knownDirection === 'expense'
+        : (importDest === 'card' ? r.amount >= 0 : r.amount < 0);
       const suggestion = ImportParser.suggestCategory(categoryModel, r.description);
       const classification = suggestion.classification || '';
       const subcategory = suggestion.subcategory || '';
