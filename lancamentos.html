@@ -2214,16 +2214,27 @@
 
     importRows = raw.map(r => {
       const isDup = existing.has(r.fp);
-      /* Convenção de sinal POR ORIGEM (Ajuste 1):
-         - Conta corrente: negativo = saída; positivo/"+" = entrada.
-         - Cartão: negativo = crédito/estorno (entrada, abate a fatura e devolve
-           limite); positivo/sem sinal = compra (saída, aumenta fatura/consome limite).
-         CSVs com colunas Débito/Crédito separadas já vêm com a direção
-         inequívoca (r.knownDirection) — nesse caso não se aplica a
-         convenção por origem, que só existe para resolver o sinal de uma
-         única coluna de valor. */
+      /* Direção do lançamento, em ordem de confiabilidade:
+         1) knownDirection: CSV com colunas Débito/Crédito separadas já vem
+            com a direção inequívoca, não depende de sinal nem de origem.
+         2) TRNTYPE do OFX (DEBIT/CREDIT): é o campo padrão do OFX pra isso —
+            mais confiável que adivinhar pelo sinal, porque o sinal do
+            TRNAMT varia de banco pra banco (alguns exportam fatura de
+            cartão com compra negativa e estorno positivo, outros o
+            contrário). Quando o arquivo declara TRNTYPE, usamos ele direto.
+         3) Sem knownDirection nem TRNTYPE reconhecido (CSV de coluna única,
+            ou OFX sem essa tag): cai na convenção POR ORIGEM combinada
+            (Ajuste 1) — conta corrente: negativo = saída, positivo = entrada;
+            cartão: positivo/sem sinal = compra (saída), negativo = crédito/
+            estorno (entrada). O botão de alternar entrada/saída no preview
+            cobre o caso de um banco cuja convenção não bate com isso. */
+      const trnType = (r.type || '').toUpperCase();
       const isExpense = r.knownDirection
         ? r.knownDirection === 'expense'
+        : trnType === 'DEBIT'
+        ? true
+        : trnType === 'CREDIT'
+        ? false
         : (importDest === 'card' ? r.amount >= 0 : r.amount < 0);
       const suggestion = ImportParser.suggestCategory(categoryModel, r.description);
       const classification = suggestion.classification || '';
