@@ -13,6 +13,7 @@ const ROOT = path.resolve(__dirname, '..');
 const ofx = readFileSync(path.join(__dirname, 'fixtures', 'extrato-conta.ofx'), 'utf-8');
 const csvCard = readFileSync(path.join(__dirname, 'fixtures', 'fatura-cartao.csv'), 'utf-8');
 const ofxCardCredits = readFileSync(path.join(__dirname, 'fixtures', 'fatura-cartao-creditos.ofx'), 'utf-8');
+const ofxTrnTypeInvertido = readFileSync(path.join(__dirname, 'fixtures', 'fatura-cartao-trntype-invertido.ofx'), 'utf-8');
 
 /* Stub do Supabase: DB em memória com um query-builder thenable que cobre os
    encadeamentos usados pela página (select/eq/in/gte/lte/order/limit/insert/
@@ -326,6 +327,33 @@ await page.waitForTimeout(400);
 const afterReimport = await page.evaluate(() => window.__db.transactions.filter(t => t.credit_card_id === 'card-1'));
 check('total final = 6 (4 antigas + 2 créditos recuperados, sem duplicar)', afterReimport.length === 6, `${afterReimport.length}`);
 check('créditos recuperados entraram como income', afterReimport.filter(t => t.direction === 'income').length === 2);
+
+/* ── 7. TRNTYPE do OFX resolve a direção mesmo quando o sinal do banco é o
+   "invertido" (compra negativa, estorno/crédito positivo) — bug real visto
+   em produção: um cartão cuja fatura exporta TRNAMT negativo pra compra e
+   positivo pra estorno. A convenção por sinal (Ajuste 1) sozinha erraria
+   essas linhas; TRNTYPE (DEBIT/CREDIT, campo padrão do OFX) resolve certo. ── */
+await page.click('#btn-import');
+await page.waitForTimeout(150);
+await page.click('.import-dest-btn[data-dest="card"]');
+await page.selectOption('#import-card', 'card-1');
+await setFile('fatura-cartao-trntype-invertido.ofx', ofxTrnTypeInvertido);
+await page.click('#btn-import-parse');
+await page.waitForTimeout(300);
+
+const trnRows = await page.$$eval('#import-preview-body tr', trs => trs.map(tr => ({
+  desc: tr.querySelector('.imp-edit[data-f="description"]')?.value,
+  label: tr.querySelector('.imp-dir')?.textContent?.trim(),
+})));
+const compraRows = trnRows.filter(r => /compra internacional/i.test(r.desc || ''));
+const voltaRows = trnRows.filter(r => /de volta/i.test(r.desc || ''));
+check('linhas de "compra" (TRNTYPE DEBIT, sinal negativo) aparecem como Saída',
+  compraRows.length === 2 && compraRows.every(r => r.label === 'Saída'), JSON.stringify(trnRows));
+check('linhas "de volta" (TRNTYPE CREDIT, sinal positivo) aparecem como Entrada',
+  voltaRows.length === 2 && voltaRows.every(r => r.label === 'Entrada'), JSON.stringify(trnRows));
+
+await page.click('#btn-import-back');
+await page.click('#modal-import-cancel');
 
 if (pageErrors.length) { console.log('\nErros de página:'); pageErrors.forEach(e => console.log('  ' + e)); }
 await browser.close();
